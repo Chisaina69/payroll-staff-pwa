@@ -1,159 +1,84 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AuthContext } from './auth-context.js'
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  reload,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signOut,
-} from 'firebase/auth'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { auth, db, firebaseConfigured } from '../firebase.js'
-
-function getEmailKey(email) {
-  return email.trim().toLowerCase()
-}
-
-function profileLoadErrorMessage(error) {
-  if (error?.code === 'unavailable') {
-    return 'Payday could not reach Cloud Firestore. In Firebase Console, confirm that the project configured by VITE_FIREBASE_PROJECT_ID has a Cloud Firestore database with ID (default). If you just created it, wait a few minutes and reload the app.'
-  }
-  if (error?.code === 'permission-denied') {
-    return 'Firestore denied access to this account. Check that the deployed rules match the users/employees collections and that this account has an authorized user document.'
-  }
-  return error instanceof Error ? error.message : 'Unable to load your account profile.'
-}
-
-async function loadProfile(user) {
-  const userSnapshot = await getDoc(doc(db, 'users', user.uid))
-  if (!userSnapshot.exists()) return null
-
-  const account = userSnapshot.data()
-  const role = typeof account.role === 'string' ? account.role.toLowerCase() : account.role
-  if (role !== 'staff') return { ...account, role }
-
-  if (typeof account.employeeId !== 'string' || !account.employeeId) {
-    throw new Error('Your staff account is missing its employee ID. Contact your administrator.')
-  }
-
-  const employeeSnapshot = await getDoc(doc(db, 'employees', account.employeeId))
-  if (!employeeSnapshot.exists()) {
-    throw new Error('Your employee record could not be found. Contact your administrator.')
-  }
-
-  const employee = employeeSnapshot.data()
-  if (
-    typeof employee.email !== 'string'
-    || getEmailKey(employee.email) !== getEmailKey(user.email ?? '')
-  ) {
-    throw new Error('This account email does not match the employee record. Contact your administrator.')
-  }
-
-  return {
-    ...employee,
-    ...account,
-    role,
-    displayName: employee.displayName ?? employee.name ?? user.displayName ?? user.email,
-    jobTitle: employee.jobTitle ?? employee.role ?? '',
-    department: employee.department ?? '',
-    monthlySalary: employee.monthlySalary ?? employee.salary,
-  }
-}
+import { useEffect, useState } from "react";
+import { AuthContext } from "./context";
+import { supabase } from "../lib/supabase";
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(firebaseConfigured)
-  const [profileError, setProfileError] = useState('')
-  const authEventId = useRef(0)
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  async function loadProfile(userId) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (error) {
+      console.error("Unable to load profile:", error.message);
+      return null;
+    }
+    return data;
+  }
 
   useEffect(() => {
-    if (!auth) return undefined
+    // Check for an existing session on first load (e.g. page refresh)
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) setProfile(await loadProfile(session.user.id));
+      setLoading(false);
+    });
 
-    return onAuthStateChanged(auth, async (nextUser) => {
-      const eventId = ++authEventId.current
-      setLoading(true)
-      setUser(nextUser)
-      setProfile(null)
-      setProfileError('')
-
-      try {
-        if (nextUser) {
-          const nextProfile = await loadProfile(nextUser)
-          if (eventId === authEventId.current) setProfile(nextProfile)
-        }
-      } catch (error) {
-        if (eventId === authEventId.current) {
-          console.error('Unable to load the signed-in user profile:', error)
-          setProfileError(profileLoadErrorMessage(error))
-        }
-      } finally {
-        if (eventId === authEventId.current) setLoading(false)
+    // Keep user/profile in sync whenever auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setUser(session?.user ?? null);
+        setProfile(session?.user ? await loadProfile(session.user.id) : null);
       }
-    })
-  }, [])
+    );
 
-  const signIn = useCallback(async (email, password) => {
-    if (!auth) throw new Error('Firebase is not configured.')
-    return signInWithEmailAndPassword(auth, getEmailKey(email), password)
-  }, [])
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
-  const registerStaff = useCallback(async (employeeId, email, password) => {
-    if (!auth || !db) throw new Error('Firebase is not configured.')
+  const login = async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
 
-    const normalizedEmail = getEmailKey(email)
-    const normalizedEmployeeId = employeeId.trim()
-    if (!normalizedEmployeeId) throw new Error('Enter the employee ID provided by your administrator.')
-
-    const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password)
-    await setDoc(doc(db, 'users', credential.user.uid), {
-      role: 'staff',
-      employeeId: normalizedEmployeeId,
-      email: normalizedEmail,
-    })
-    await sendEmailVerification(credential.user, {
-      url: `${window.location.origin}/login`,
-    })
-  }, [])
-
-  const signOutUser = useCallback(async () => {
-    if (!auth) throw new Error('Firebase is not configured.')
-    await signOut(auth)
-  }, [])
-
-  const refreshVerification = useCallback(async () => {
-    if (!auth?.currentUser) return
-    await reload(auth.currentUser)
-    if (!auth.currentUser.emailVerified) {
-      throw new Error('Firebase still shows this email as unverified. Open the verification link, then try again.')
+  const signUpStaff = async (employeeId, email, password) => {
+    // Confirm the Employee ID exists before creating a login account for it
+    const { data: employee, error: lookupError } = await supabase
+      .from("employees")
+      .select("employee_id")
+      .eq("employee_id", employeeId)
+      .single();
+    if (lookupError || !employee) {
+      throw new Error("That Employee ID wasn't found. Check with your administrator.");
     }
-    await auth.currentUser.getIdToken(true)
-    const nextProfile = await loadProfile(auth.currentUser)
-    setUser(auth.currentUser)
-    setProfile(nextProfile)
-    setProfileError('')
-  }, [])
 
-  const resendVerification = useCallback(async () => {
-    if (!auth?.currentUser) throw new Error('Sign in first to resend the verification email.')
-    await sendEmailVerification(auth.currentUser, {
-      url: `${window.location.origin}/login`,
-    })
-  }, [])
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
 
-  const value = useMemo(() => ({
-    configured: firebaseConfigured,
+    const { error: profileError } = await supabase.from("profiles").insert({
+      id: data.user.id,
+      role: "staff",
+      employee_id: employeeId,
+      email,
+    });
+    if (profileError) throw profileError;
+  };
+
+  const logout = () => supabase.auth.signOut();
+
+  const value = {
     user,
     profile,
+    role: profile?.role ?? null,
+    employeeId: profile?.employee_id ?? null,
     loading,
-    profileError,
-    signIn,
-    registerStaff,
-    signOutUser,
-    refreshVerification,
-    resendVerification,
-  }), [user, profile, loading, profileError, signIn, registerStaff, signOutUser, refreshVerification, resendVerification])
+    login,
+    signUpStaff,
+    logout,
+  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
