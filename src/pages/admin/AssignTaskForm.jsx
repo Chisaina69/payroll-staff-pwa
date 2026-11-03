@@ -8,7 +8,7 @@ export default function AssignTaskForm({ employees, onDone }) {
   const [values, setValues] = useState({
     title: "",
     description: "",
-    assignedTo: employees[0]?.employee_id || "",
+    assignedTo: employees[0]?.id || "",
     dueDate: "",
   });
   const [error, setError] = useState("");
@@ -40,7 +40,11 @@ export default function AssignTaskForm({ employees, onDone }) {
         </Field>
         <Field label="Assign to">
           <select className={inputClass} value={values.assignedTo} onChange={(event) => update("assignedTo", event.target.value)} required>
-            {employees.map((employee) => <option key={employee.employee_id} value={employee.employee_id}>{employee.name}</option>)}
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.first_name} {employee.last_name}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Description">

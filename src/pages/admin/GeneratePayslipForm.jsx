@@ -3,7 +3,7 @@ import { generatePayslip } from "../../lib/services";
 import { Button, Card, Field, inputClass } from "../../components/ui";
 
 export default function GeneratePayslipForm({ employees, onDone }) {
-  const [employeeId, setEmployeeId] = useState(employees[0]?.employee_id || "");
+  const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
   const [period, setPeriod] = useState("");
   const [gross, setGross] = useState("");
   const [error, setError] = useState("");
@@ -28,7 +28,11 @@ export default function GeneratePayslipForm({ employees, onDone }) {
       <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-3">
         <Field label="Employee">
           <select className={inputClass} value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} required>
-            {employees.map((employee) => <option key={employee.employee_id} value={employee.employee_id}>{employee.name}</option>)}
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.first_name} {employee.last_name}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Pay period">

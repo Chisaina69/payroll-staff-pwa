@@ -14,10 +14,12 @@ import { Badge, Button, Card, EmptyState, StatCard } from "../../components/ui";
 import AddEmployeeForm from "./AddEmployeeForm";
 import GeneratePayslipForm from "./GeneratePayslipForm";
 import AssignTaskForm from "./AssignTaskForm";
+import { createStaffInvite } from "../../lib/paydayAuth";
 
 export default function AdminDashboard() {
   const { logout, profile } = useAuth();
   const [employees, setEmployees] = useState([]);
+  const [employeeLoadError, setEmployeeLoadError] = useState("");
   const [payroll, setPayroll] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -25,10 +27,15 @@ export default function AdminDashboard() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showGeneratePayslip, setShowGeneratePayslip] = useState(false);
   const [showAssignTask, setShowAssignTask] = useState(false);
+  const [invite, setInvite] = useState(null);
+  const [inviteError, setInviteError] = useState("");
+  const [invitingEmployee, setInvitingEmployee] = useState(null);
 
   useEffect(() => {
     const unsubs = [
-      subscribeEmployees(setEmployees),
+      subscribeEmployees(setEmployees, (error) => {
+        setEmployeeLoadError(error?.message || "");
+      }),
       subscribePayroll(setPayroll),
       subscribeLeaveRequests(setLeaveRequests),
       subscribeTasks(setTasks),
@@ -37,12 +44,45 @@ export default function AdminDashboard() {
   }, []);
 
   function employeeName(employeeId) {
-    return employees.find((e) => e.employee_id === employeeId)?.name || employeeId;
+    const employee = employees.find((e) => e.id === employeeId);
+    return employee
+      ? `${employee.first_name} ${employee.last_name}`.trim()
+      : employeeId;
+  }
+
+  function handleEmployeeAdded(employee) {
+    setEmployees((current) => {
+      const existingIndex = current.findIndex((item) => item.id === employee.id);
+      const updated = existingIndex === -1
+        ? [...current, employee]
+        : current.map((item) => item.id === employee.id ? employee : item);
+      return updated.sort((a, b) =>
+        `${a.first_name} ${a.last_name}`.localeCompare(
+          `${b.first_name} ${b.last_name}`,
+        )
+      );
+    });
+    setEmployeeLoadError("");
+    setShowAddEmployee(false);
   }
 
   async function handleLeaveDecision(request, status) {
     await setLeaveRequestStatus(request.id, status);
     await sendNotification(request.employee_id, `Your ${request.type} leave request has been ${status}.`);
+  }
+
+  async function handleCreateInvite(employeeCode) {
+    setInvite(null);
+    setInviteError("");
+    setInvitingEmployee(employeeCode);
+    try {
+      const result = await createStaffInvite(employeeCode);
+      setInvite(result);
+    } catch (error) {
+      setInviteError(error.message || "Unable to generate a registration code.");
+    } finally {
+      setInvitingEmployee(null);
+    }
   }
 
   const pendingLeave = leaveRequests.filter((r) => r.status === "pending").length;
@@ -78,7 +118,26 @@ export default function AdminDashboard() {
               <Button onClick={() => setShowAddEmployee(true)}><Plus size={15} /> Add Employee</Button>
             )}
           </div>
-          {showAddEmployee && <AddEmployeeForm onDone={() => setShowAddEmployee(false)} />}
+          {showAddEmployee && <AddEmployeeForm onDone={handleEmployeeAdded} />}
+          {employeeLoadError && (
+            <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not refresh the employee list from Supabase: {employeeLoadError}
+            </p>
+          )}
+          {invite && (
+            <Card className="mb-5 border-brand-300">
+              <p className="font-semibold text-ink-900">
+                Registration code for employee {invite.employee_code}
+              </p>
+              <p className="my-2 break-all rounded-lg bg-surface-alt p-3 font-mono text-sm">
+                {invite.registration_code}
+              </p>
+              <p className="text-sm text-ink-500">
+                Expires {new Date(invite.expires_at).toLocaleString()}. Share it securely with the employee.
+              </p>
+            </Card>
+          )}
+          {inviteError && <p className="mb-4 text-sm text-danger">{inviteError}</p>}
           {employees.length === 0 ? (
             <EmptyState>No employees yet. Add one to get started.</EmptyState>
           ) : (
@@ -87,18 +146,27 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
                     <th className="px-4 py-3">ID</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Department</th>
-                    <th className="px-4 py-3">Position</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Position</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Account</th>
                   </tr>
                 </thead>
                 <tbody>
                   {employees.map((e) => (
-                    <tr key={e.employee_id} className="border-b border-line last:border-0 hover:bg-surface-alt/60">
-                      <td className="px-4 py-3 font-medium text-ink-900">{e.employee_id}</td>
-                      <td className="px-4 py-3">{e.name}</td>
+                    <tr key={e.id} className="border-b border-line last:border-0 hover:bg-surface-alt/60">
+                      <td className="px-4 py-3 font-medium text-ink-900">{e.employee_code}</td>
+                      <td className="px-4 py-3">{e.first_name} {e.last_name}</td>
                       <td className="px-4 py-3 text-ink-600">{e.department}</td>
                       <td className="px-4 py-3 text-ink-600">{e.position}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(e.salary).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(e.basic_salary).toLocaleString()}</td>
                       <td className="px-4 py-3"><Badge status={e.status} /></td>
+                      <td className="px-4 py-3">
+                        <Button
+                          className="whitespace-nowrap px-3 py-1.5 text-xs"
+                          disabled={e.status !== "active" || invitingEmployee !== null}
+                          onClick={() => handleCreateInvite(e.employee_code)}
+                        >
+                          {invitingEmployee === e.employee_code ? "Generating..." : "Create invite"}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

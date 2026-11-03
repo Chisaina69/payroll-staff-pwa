@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { Button, Field, inputClass } from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -16,10 +17,10 @@ export default function Login() {
     setError("");
     setBusy(true);
     try {
-      await login(email, password);
+      await login(identifier, password);
       navigate("/");
-    } catch {
-      setError("Login failed. Check your email and password and try again.");
+    } catch (loginError) {
+      setError(loginError.message || "Login failed. Check your details and try again.");
     } finally {
       setBusy(false);
     }
@@ -42,14 +43,19 @@ export default function Login() {
           <p className="mt-1.5 text-sm text-ink-500">Sign in to continue</p>
         </div>
 
+        {location.state?.accountActivated && (
+          <p className="mb-4 text-sm text-success">
+            Your account is ready. Sign in with your employee ID and password.
+          </p>
+        )}
+
         <div className="space-y-4">
-          <Field label="Email">
+          <Field label="Email or Employee ID">
             <input
-              type="email"
               className={inputClass}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@company.com"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="name@company.com or EMP001"
               required
             />
           </Field>

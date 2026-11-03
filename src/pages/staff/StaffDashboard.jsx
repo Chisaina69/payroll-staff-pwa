@@ -8,7 +8,6 @@ import {
   subscribeTasks,
   submitLeaveRequest,
   completeTask,
-  updateEmployee,
   fetchDirectory,
 } from "../../lib/services";
 import { supabase } from "../../lib/supabase";
@@ -31,9 +30,6 @@ export default function StaffDashboard() {
   const [endDate, setEndDate] = useState("");
   const [leaveMsg, setLeaveMsg] = useState("");
 
-  const [contact, setContact] = useState("");
-  const [profileMsg, setProfileMsg] = useState("");
-
   useEffect(() => {
     if (!employeeId) return;
     const unsubs = [
@@ -42,8 +38,14 @@ export default function StaffDashboard() {
       subscribeNotifications(employeeId, setNotifications),
       subscribeTasks(setTasks, { employeeId }),
     ];
-    supabase.from("employees").select("*").eq("employee_id", employeeId).single()
-      .then(({ data }) => { setMyRecord(data); setContact(data?.contact || ""); });
+    supabase.from("employees").select("*").eq("id", employeeId).single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Unable to load employee record:", error.message);
+          return;
+        }
+        setMyRecord(data);
+      });
     fetchDirectory().then(setDirectory).catch((error) => {
       console.error("Unable to load employee directory:", error.message);
     });
@@ -61,13 +63,6 @@ export default function StaffDashboard() {
     }
   }
 
-  async function handleProfileSave(e) {
-    e.preventDefault();
-    setProfileMsg("");
-    const { error } = await updateEmployee(employeeId, { contact });
-    setProfileMsg(error ? "Could not save changes." : "Saved.");
-  }
-
   const unreadNotifs = notifications.filter((n) => !n.read).length;
   const pendingTasks = tasks.filter((t) => t.status === "pending").length;
 
@@ -82,7 +77,7 @@ export default function StaffDashboard() {
 
   return (
     <DashboardShell
-      brand={`${profile?.display_name || "Staff"} — ${employeeId || ""}`}
+      brand={`${myRecord ? `${myRecord.first_name} ${myRecord.last_name}`.trim() : profile?.display_name || "Staff"} — ${myRecord?.employee_code || ""}`}
       navItems={navItems}
       activeTab={tab}
       onTabChange={setTab}
@@ -210,17 +205,11 @@ export default function StaffDashboard() {
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">My Profile</h2>
           <Card>
             <dl className="mb-5 space-y-2 text-sm">
-              <div className="flex justify-between"><dt className="text-ink-500">Name</dt><dd className="font-medium text-ink-900">{myRecord?.name}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-500">Name</dt><dd className="font-medium text-ink-900">{myRecord ? `${myRecord.first_name} ${myRecord.last_name}`.trim() : ""}</dd></div>
               <div className="flex justify-between"><dt className="text-ink-500">Department</dt><dd className="font-medium text-ink-900">{myRecord?.department}</dd></div>
               <div className="flex justify-between"><dt className="text-ink-500">Position</dt><dd className="font-medium text-ink-900">{myRecord?.position}</dd></div>
+              <div className="flex justify-between"><dt className="text-ink-500">Work email</dt><dd className="font-medium text-ink-900">{myRecord?.email}</dd></div>
             </dl>
-            <form onSubmit={handleProfileSave}>
-              <Field label="Contact (email or phone)">
-                <input className={inputClass} value={contact} onChange={(e) => setContact(e.target.value)} />
-              </Field>
-              <Button type="submit" className="mt-3">Save</Button>
-              {profileMsg && <p className="mt-2 text-sm text-ink-500">{profileMsg}</p>}
-            </form>
           </Card>
         </section>
       )}
@@ -237,8 +226,8 @@ export default function StaffDashboard() {
               </thead>
               <tbody>
                 {directory.map((d) => (
-                  <tr key={d.employee_id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3 font-medium text-ink-900">{d.name}</td>
+                  <tr key={d.id || d.employee_code || d.employee_id} className="border-b border-line last:border-0">
+                    <td className="px-4 py-3 font-medium text-ink-900">{d.first_name ? `${d.first_name} ${d.last_name || ""}`.trim() : d.name}</td>
                     <td className="px-4 py-3 text-ink-600">{d.department}</td>
                     <td className="px-4 py-3 text-ink-600">{d.position}</td>
                   </tr>

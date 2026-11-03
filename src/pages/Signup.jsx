@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/useAuth";
 import { Button, Field, inputClass } from "../components/ui";
+import { activateStaffAccount } from "../lib/paydayAuth";
 
 export default function Signup() {
-  const { signUpStaff } = useAuth();
   const navigate = useNavigate();
   const [employeeId, setEmployeeId] = useState("");
-  const [email, setEmail] = useState("");
+  const [registrationCode, setRegistrationCode] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,8 +16,8 @@ export default function Signup() {
     setError("");
     setBusy(true);
     try {
-      await signUpStaff(employeeId.trim(), email.trim(), password);
-      navigate("/");
+      await activateStaffAccount(employeeId, registrationCode, password);
+      navigate("/login", { state: { accountActivated: true } });
     } catch (err) {
       setError(err.message || "Couldn't create your account. Please try again.");
     } finally {
@@ -41,7 +40,7 @@ export default function Signup() {
         <div className="mb-7 text-center">
           <span className="font-display text-3xl font-semibold text-brand-800">Payday</span>
           <p className="mt-1.5 text-sm text-ink-500">
-            Ask your administrator for your Employee ID before signing up.
+            Ask your administrator for an Employee ID and one-time registration code.
           </p>
         </div>
 
@@ -55,12 +54,11 @@ export default function Signup() {
               required
             />
           </Field>
-          <Field label="Email">
+          <Field label="Registration code">
             <input
-              type="email"
               className={inputClass}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={registrationCode}
+              onChange={(e) => setRegistrationCode(e.target.value)}
               required
             />
           </Field>
@@ -70,7 +68,7 @@ export default function Signup() {
               className={inputClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
+              minLength={12}
               required
             />
           </Field>
@@ -79,7 +77,7 @@ export default function Signup() {
         {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
         <Button type="submit" disabled={busy} className="mt-6 w-full">
-          {busy ? "Creating account..." : "Sign Up"}
+          {busy ? "Activating account..." : "Activate Account"}
         </Button>
 
         <p className="mt-5 text-center text-sm text-ink-500">

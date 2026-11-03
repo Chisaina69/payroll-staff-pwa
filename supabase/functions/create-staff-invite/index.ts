@@ -1,46 +1,148 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+import {
+  adminClient,
+  generateCode,
+  getCorsHeaders,
+  hashCode,
+  requireAdmin,
+  respond,
+} from "../_shared/payday.ts";
 
-// Setup type definitions for built-in Supabase Runtime APIs
-import "@supabase/functions-js/edge-runtime.d.ts";
-import { withSupabase } from "@supabase/server";
+Deno.serve(async (req: Request) => {
+  const headers = getCorsHeaders(req);
 
-console.log("Hello from Functions!");
+  if (!headers) {
+    return new Response("Origin not allowed", { status: 403 });
+  }
 
-// This endpoint uses 'publishable' | 'secret' access, apiKey is required.
-// Use publishable for Client-facing, key-validated endpoints
-// Use secret for Server-to-server, internal calls
-export default {
-  fetch: withSupabase({ auth: ["publishable", "secret"] }, async (req, ctx) => {
-    // Called by another service with a secret key
-    // ctx.supabaseAdmin bypasses RLS — use for privileged operations
-    /*
-    if (ctx.authMode === "secret") {
-      const { user_id } = await req.json();
-      const { data } = await ctx.supabaseAdmin.auth.admin.getUserById(user_id);
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers });
+  }
 
-      return Response.json({
-        email: data?.user?.email,
-      });
+  if (req.method !== "POST") {
+    return respond(headers, { error: "Method not allowed" }, 405);
+  }
+
+  try {
+    const auth = await requireAdmin(req);
+
+    if (auth.error) {
+      return respond(headers, { error: auth.error }, 403);
     }
-    */
 
-    const { name } = await req.json();
+    let body: unknown;
 
-    return Response.json({
-      message: `Hello ${name}!`,
+    try {
+      body = await req.json();
+    } catch {
+      return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    if (!body || typeof body !== "object" || !("employee_code" in body)) {
+      return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    const rawEmployeeCode = body.employee_code;
+
+    if (typeof rawEmployeeCode !== "string") {
+      return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    const employeeCode = rawEmployeeCode.trim();
+
+    if (
+      !employeeCode ||
+      employeeCode.length > 50
+    ) {
+      return respond(
+        headers,
+        { error: "A valid employee ID is required" },
+        400,
+      );
+    }
+
+    const { data: employee, error: employeeError } = await adminClient
+      .from("employees")
+      .select("id, employee_code, email, status")
+      .eq("employee_code", employeeCode)
+      .maybeSingle();
+
+    if (employeeError) {
+      return respond(headers, { error: "Unable to process request" }, 500);
+    }
+
+    if (!employee || employee.status !== "active") {
+      return respond(headers, { error: "Employee not eligible" }, 404);
+    }
+
+    if (typeof employee.email !== "string" || !employee.email.trim()) {
+      return respond(
+        headers,
+        { error: "Add the employee's work email before creating an invite" },
+        400,
+      );
+    }
+
+    const { data: existingProfile, error: profileError } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("employee_id", employee.id)
+      .maybeSingle();
+
+    if (profileError) {
+      return respond(headers, { error: "Unable to process request" }, 500);
+    }
+
+    if (existingProfile) {
+      return respond(
+        headers,
+        { error: "Employee already has an account" },
+        409,
+      );
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+    const code = generateCode();
+    const codeHash = await hashCode(code);
+
+    const { error: invalidateError } = await adminClient
+      .from("staff_invite_codes")
+      .update({ used_at: now.toISOString() })
+      .eq("employee_id", employee.id)
+      .is("used_at", null);
+
+    if (invalidateError) {
+      return respond(headers, { error: "Unable to issue code" }, 500);
+    }
+
+    const { error: insertError } = await adminClient
+      .from("staff_invite_codes")
+      .insert({
+        employee_id: employee.id,
+        code_hash: codeHash,
+        expires_at: expiresAt.toISOString(),
+        created_by: auth.userId,
+      });
+
+    if (insertError) {
+      return respond(headers, { error: "Unable to issue code" }, 500);
+    }
+
+    await adminClient.from("audit_logs").insert({
+      actor_id: auth.userId,
+      action: "staff_invite_created",
+      entity_type: "employee",
+      entity_id: employee.id,
     });
-  }),
-};
 
-/* To invoke locally:
+    return respond(headers, {
+      employee_code: employee.employee_code,
+      registration_code: code,
+      expires_at: expiresAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("create-staff-invite failed:", error);
 
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/create-staff-invite' \
-    --header 'apiKey: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH' \
-    --data '{"name":"Functions"}'
-
-*/
+    return respond(headers, { error: "Internal server error" }, 500);
+  }
+});

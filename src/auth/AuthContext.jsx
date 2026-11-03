@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { AuthContext } from "./context";
 import { supabase } from "../lib/supabase";
+import {
+  loginWithEmployeeId,
+  logout as logoutFromSupabase,
+} from "../lib/paydayAuth";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -39,35 +43,20 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const login = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  };
-
-  const signUpStaff = async (employeeId, email, password) => {
-    // Confirm the Employee ID exists before creating a login account for it
-    const { data: employee, error: lookupError } = await supabase
-      .from("employees")
-      .select("employee_id")
-      .eq("employee_id", employeeId)
-      .single();
-    if (lookupError || !employee) {
-      throw new Error("That Employee ID wasn't found. Check with your administrator.");
+  const login = async (identifier, password) => {
+    if (identifier.includes("@")) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: identifier.trim(),
+        password,
+      });
+      if (error) throw error;
+      return;
     }
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: data.user.id,
-      role: "staff",
-      employee_id: employeeId,
-      email,
-    });
-    if (profileError) throw profileError;
+    await loginWithEmployeeId(identifier, password);
   };
 
-  const logout = () => supabase.auth.signOut();
+  const logout = () => logoutFromSupabase();
 
   const value = {
     user,
@@ -76,7 +65,6 @@ export function AuthProvider({ children }) {
     employeeId: profile?.employee_id ?? null,
     loading,
     login,
-    signUpStaff,
     logout,
   };
 

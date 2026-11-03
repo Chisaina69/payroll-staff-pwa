@@ -6,10 +6,10 @@ export default function AddEmployeeForm({ onDone }) {
   const [values, setValues] = useState({
     employeeId: "",
     name: "",
+    email: "",
     department: "",
     position: "",
     salary: "",
-    contact: "",
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -24,11 +24,11 @@ export default function AddEmployeeForm({ onDone }) {
     setSaving(true);
     try {
       const { employeeId, ...employee } = values;
-      await addEmployee(employeeId.trim(), {
+      const createdEmployee = await addEmployee(employeeId.trim(), {
         ...employee,
         salary: Number(employee.salary),
       });
-      onDone();
+      onDone(createdEmployee);
     } catch (submitError) {
       setError(submitError.message || "Unable to add this employee.");
     } finally {
@@ -45,6 +45,9 @@ export default function AddEmployeeForm({ onDone }) {
         <Field label="Full name">
           <input className={inputClass} value={values.name} onChange={(event) => update("name", event.target.value)} required />
         </Field>
+        <Field label="Work email">
+          <input type="email" className={inputClass} value={values.email} onChange={(event) => update("email", event.target.value)} required />
+        </Field>
         <Field label="Department">
           <input className={inputClass} value={values.department} onChange={(event) => update("department", event.target.value)} required />
         </Field>
@@ -53,9 +56,6 @@ export default function AddEmployeeForm({ onDone }) {
         </Field>
         <Field label="Monthly salary (KES)">
           <input type="number" min="0" step="0.01" className={inputClass} value={values.salary} onChange={(event) => update("salary", event.target.value)} required />
-        </Field>
-        <Field label="Contact">
-          <input className={inputClass} value={values.contact} onChange={(event) => update("contact", event.target.value)} />
         </Field>
         {error && <p className="text-sm text-danger sm:col-span-2">{error}</p>}
         <div className="flex gap-2 sm:col-span-2">

@@ -14,47 +14,105 @@ import { computePayslip } from "./payrollCalculator";
 
 // ---------- Employees ----------
 
-export function subscribeEmployees(onChange) {
+export function subscribeEmployees(onChange, onError = () => {}) {
   async function fetchAndNotify() {
-    const { data, error } = await supabase.from("employees").select("*").order("name");
-    if (!error) {
-      await localDb.employees.clear();
-      await localDb.employees.bulkPut(data);
-      onChange(data);
-    } else {
-      onChange(await localDb.employees.toArray());
+    const { data, error } = await supabase
+      .from("employees")
+      .select("*")
+      .order("first_name");
+
+    if (error) {
+      console.error("Unable to load employees from Supabase:", error.message);
+      onError(error);
+      try {
+        onChange(await localDb.employees.toArray());
+      } catch (cacheError) {
+        console.error("Unable to load cached employees:", cacheError);
+        onError(cacheError);
+      }
+      return;
     }
+
+    const employees = data || [];
+    try {
+      await localDb.transaction("rw", localDb.employees, async () => {
+        await localDb.employees.clear();
+        await localDb.employees.bulkPut(employees);
+      });
+    } catch (cacheError) {
+      console.error("Unable to cache employees:", cacheError);
+    }
+
+    onError(null);
+    onChange(employees);
   }
-  fetchAndNotify();
+
+  fetchAndNotify().catch((error) => {
+    console.error("Unexpected employee list error:", error);
+    onError(error);
+  });
+
   const channel = supabase
     .channel("employees-changes")
-    .on("postgres_changes", { event: "*", schema: "public", table: "employees" }, fetchAndNotify)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "employees" },
+      () => {
+        fetchAndNotify().catch((error) => {
+          console.error("Unable to refresh employees:", error);
+          onError(error);
+        });
+      },
+    )
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
 export async function addEmployee(employeeId, data) {
-  const { error } = await supabase.from("employees").insert({
-    employee_id: employeeId,
-    ...data,
-    status: data.status || "active",
-    leave_balance: 21,
-  });
+  const [firstName, ...lastNameParts] = data.name.trim().split(/\s+/);
+  const lastName = lastNameParts.join(" ");
+  const monthlySalary = Number(data.salary);
+
+  if (!firstName || !data.email.trim() || !Number.isFinite(monthlySalary)) {
+    throw new Error("Enter a name, work email, and valid monthly salary.");
+  }
+
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .insert({
+      employee_code: employeeId.trim(),
+      first_name: firstName,
+      last_name: lastName || firstName,
+      email: data.email.trim().toLowerCase(),
+      department: data.department.trim(),
+      position: data.position.trim(),
+      basic_salary: monthlySalary,
+    })
+    .select()
+    .single();
+
   if (error) {
+    console.error("Failed to create employee:", error.message);
     if (error.code === "23505") throw new Error(`Employee ID "${employeeId}" is already in use.`);
     throw error;
   }
+
+  console.info("Employee record created:", employee.id);
+  return employee;
 }
 
 export function updateEmployee(employeeId, data) {
-  return supabase.from("employees").update(data).eq("employee_id", employeeId);
+  return supabase.from("employees").update(data).eq("id", employeeId);
 }
 
 // Employee directory: name/department/position only, no salary — reads
 // from the employee_directory VIEW (see schema), which enforces that at
 // the database level regardless of what this function requests.
 export async function fetchDirectory() {
-  const { data, error } = await supabase.from("employee_directory").select("*").order("name");
+  const { data, error } = await supabase
+    .from("employee_directory")
+    .select("*")
+    .order("first_name");
   if (error) throw error;
   return data;
 }
