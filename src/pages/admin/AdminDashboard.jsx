@@ -24,6 +24,8 @@ export default function AdminDashboard() {
   const [payroll, setPayroll] = useState([]);
   const [payrollLoadError, setPayrollLoadError] = useState("");
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leaveDecisionError, setLeaveDecisionError] = useState("");
+  const [updatingLeaveId, setUpdatingLeaveId] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [tab, setTab] = useState("employees");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
@@ -84,8 +86,23 @@ export default function AdminDashboard() {
   }
 
   async function handleLeaveDecision(request, status) {
-    await setLeaveRequestStatus(request.id, status);
-    await sendNotification(request.employee_id, `Your ${request.type} leave request has been ${status}.`);
+    setLeaveDecisionError("");
+    setUpdatingLeaveId(request.id);
+    try {
+      await setLeaveRequestStatus(request.id, status);
+      const { error } = await sendNotification(
+        request.employee_id,
+        `Your ${request.leave_type} leave request has been ${status}.`,
+      );
+      if (error) {
+        console.error("Leave decision saved, but notification failed:", error.message);
+        setLeaveDecisionError(`Request ${status}, but the staff notification could not be sent.`);
+      }
+    } catch (error) {
+      setLeaveDecisionError(error.message || "Unable to update this leave request.");
+    } finally {
+      setUpdatingLeaveId(null);
+    }
   }
 
   async function handlePaymentConfirmation(payrollId) {
@@ -273,6 +290,11 @@ export default function AdminDashboard() {
       {tab === "leave" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Leave Requests</h2>
+          {leaveDecisionError && (
+            <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {leaveDecisionError}
+            </p>
+          )}
           {leaveRequests.length === 0 ? (
             <EmptyState>No leave requests yet.</EmptyState>
           ) : (
@@ -281,22 +303,25 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
                     <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Dates</th>
-                    <th className="px-4 py-3">Days</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Days</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {leaveRequests.map((r) => (
                     <tr key={r.id} className="border-b border-line last:border-0 hover:bg-surface-alt/60">
                       <td className="px-4 py-3 font-medium text-ink-900">{employeeName(r.employee_id)}</td>
-                      <td className="px-4 py-3 text-ink-600">{r.type}</td>
+                      <td className="px-4 py-3 text-ink-600">{r.leave_type}</td>
                       <td className="px-4 py-3 text-ink-600">{r.start_date} → {r.end_date}</td>
                       <td className="px-4 py-3 text-ink-600">{r.days}</td>
+                      <td className="px-4 py-3 text-ink-600">{r.reason}</td>
                       <td className="px-4 py-3"><Badge status={r.status} /></td>
                       <td className="px-4 py-3">
                         {r.status === "pending" && (
                           <div className="flex gap-2">
-                            <Button variant="primary" className="px-3 py-1.5 text-xs" onClick={() => handleLeaveDecision(r, "approved")}>Approve</Button>
-                            <Button variant="danger" className="px-3 py-1.5 text-xs" onClick={() => handleLeaveDecision(r, "rejected")}>Reject</Button>
+                            <Button variant="primary" className="px-3 py-1.5 text-xs" disabled={updatingLeaveId !== null} onClick={() => handleLeaveDecision(r, "approved")}>
+                              {updatingLeaveId === r.id ? "Saving..." : "Approve"}
+                            </Button>
+                            <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={updatingLeaveId !== null} onClick={() => handleLeaveDecision(r, "rejected")}>Reject</Button>
                           </div>
                         )}
                       </td>

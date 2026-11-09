@@ -11,6 +11,7 @@
 import { supabase } from "./supabase";
 import { localDb } from "../db/Localdb";
 import { computePayslip } from "./payrollCalculator";
+import { countLeaveWorkingDays } from "./leave";
 
 // ---------- Employees ----------
 
@@ -250,55 +251,93 @@ export async function generatePayslip({
 
 // ---------- Leave Requests (with offline queueing) ----------
 
-export function subscribeLeaveRequests(onChange, { employeeId } = {}) {
+export function subscribeLeaveRequests(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
-    let query = supabase.from("leave_requests").select("*").order("submitted_at", { ascending: false });
+    let query = supabase.from("leave_requests").select("*").order("created_at", { ascending: false });
     if (employeeId) query = query.eq("employee_id", employeeId);
     const { data, error } = await query;
-    if (!error) {
-      await localDb.leaveRequests.bulkPut(data);
-      onChange(data);
-    } else {
+
+    if (error) {
+      console.error("Unable to load leave requests:", error.message);
+      onError(error);
       const all = await localDb.leaveRequests.toArray();
       onChange(employeeId ? all.filter((r) => r.employee_id === employeeId) : all);
+      return;
     }
+
+    try {
+      await localDb.leaveRequests.bulkPut(data || []);
+    } catch (cacheError) {
+      console.error("Unable to cache leave requests:", cacheError);
+    }
+
+    onError(null);
+    onChange(data || []);
   }
-  fetchAndNotify();
+
+  function fetchAndNotifySafely() {
+    fetchAndNotify().catch((error) => {
+      console.error("Unexpected leave request list error:", error);
+      onError(error);
+    });
+  }
+
+  fetchAndNotifySafely();
   const channel = supabase
     .channel(`leave-changes-${employeeId || "all"}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, fetchAndNotify)
+    .on("postgres_changes", { event: "*", schema: "public", table: "leave_requests" }, fetchAndNotifySafely)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-function daysBetween(start, end) {
-  const ms = new Date(end) - new Date(start);
-  return Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
-}
+export async function submitLeaveRequest({ employeeId, type, startDate, endDate, reason }) {
+  if (!employeeId) throw new Error("Unable to identify your staff account. Sign in again.");
+  if (!["Annual", "Sick", "Unpaid"].includes(type)) {
+    throw new Error("Choose Annual, Sick, or Unpaid leave.");
+  }
+  if (typeof reason !== "string" || !reason.trim()) {
+    throw new Error("Enter a reason for your leave request.");
+  }
 
-export async function submitLeaveRequest({ employeeId, type, startDate, endDate }) {
-  const days = daysBetween(startDate, endDate);
+  const days = countLeaveWorkingDays(startDate, endDate);
+  if (days === 0) {
+    throw new Error("Choose valid dates that include at least one weekday.");
+  }
+
   const record = {
     employee_id: employeeId,
-    type,
+    leave_type: type,
     start_date: startDate,
     end_date: endDate,
     days,
+    reason: reason.trim(),
     status: "pending",
-    submitted_at: new Date().toISOString(),
   };
   try {
-    const { error } = await supabase.from("leave_requests").insert(record);
+    const { data: submittedRequest, error } = await supabase
+      .from("leave_requests")
+      .insert(record)
+      .select("*")
+      .single();
     if (error) throw error;
+    return { queued: false, request: submittedRequest };
   } catch (err) {
     if (navigator.onLine) throw err;
     await localDb.pendingWrites.add({ kind: "leave_request", payload: record, createdAt: Date.now() });
-    throw new Error("You're offline — this request has been saved and will submit automatically once you're back online.");
+    return { queued: true };
   }
 }
 
 export async function setLeaveRequestStatus(id, status) {
-  const { error } = await supabase.from("leave_requests").update({ status }).eq("id", id);
+  if (!["approved", "rejected"].includes(status)) {
+    throw new Error("Choose an approved or rejected status.");
+  }
+  const { error } = await supabase.from("leave_requests")
+    .update({ status })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id")
+    .single();
   if (error) throw error;
 }
 

@@ -26,6 +26,8 @@ The app expects staff profile rows to use `role: "staff"` and an `employee_id` m
 
 The Edge Functions always allow `http://localhost:5173` and `http://127.0.0.1:5173` for local development. They also allow any additional exact origins listed in the optional `PAYDAY_ALLOWED_ORIGINS` Supabase Edge Function secret, as a comma-separated list. Deploy the Edge Functions after changing their code.
 
+Leave requests are stored in `leave_requests` with `employee_id`, `leave_type`, `start_date`, `end_date`, `days`, `reason`, `status`, and `created_at` columns. The app counts weekdays inclusively (Saturday and Sunday are excluded), offers Annual, Sick, and Unpaid types, and derives the current year's annual leave balance from a 21-working-day allowance minus approved annual leave. Pending and rejected requests do not reduce that balance.
+
 ## Build and lint
 
 ```sh
