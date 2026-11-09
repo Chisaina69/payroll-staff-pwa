@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { useAuth } from "../../auth/useAuth";
 import { generatePayslip } from "../../lib/services";
 import { Button, Card, Field, inputClass } from "../../components/ui";
 
 export default function GeneratePayslipForm({ employees, onDone }) {
+  const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
   const [period, setPeriod] = useState("");
-  const [gross, setGross] = useState("");
+  const [allowances, setAllowances] = useState("0");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -14,8 +16,13 @@ export default function GeneratePayslipForm({ employees, onDone }) {
     setError("");
     setSaving(true);
     try {
-      await generatePayslip({ employeeId, period, gross: Number(gross) });
-      onDone();
+      const createdRecord = await generatePayslip({
+        employeeId,
+        period,
+        allowances: Number(allowances),
+        createdBy: user.id,
+      });
+      onDone(createdRecord);
     } catch (submitError) {
       setError(submitError.message || "Unable to generate this payslip.");
     } finally {
@@ -38,8 +45,8 @@ export default function GeneratePayslipForm({ employees, onDone }) {
         <Field label="Pay period">
           <input type="month" className={inputClass} value={period} onChange={(event) => setPeriod(event.target.value)} required />
         </Field>
-        <Field label="Gross pay (KES)">
-          <input type="number" min="0" step="0.01" className={inputClass} value={gross} onChange={(event) => setGross(event.target.value)} required />
+        <Field label="Additional allowances (KES)">
+          <input type="number" min="0" step="0.01" className={inputClass} value={allowances} onChange={(event) => setAllowances(event.target.value)} required />
         </Field>
         {error && <p className="text-sm text-danger sm:col-span-3">{error}</p>}
         <div className="flex gap-2 sm:col-span-3">

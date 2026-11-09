@@ -17,12 +17,14 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` using Supab
 ## Supabase setup
 
 1. Create a Supabase project and enable email/password authentication.
-2. Create the database tables and `employee_directory` view queried by the app: `profiles`, `employees`, `payroll`, `leave_requests`, `notifications`, and `tasks`. Employee records use `id`, `employee_code`, `first_name`, `last_name`, `email`, `department`, `position`, and `basic_salary`; related records and staff profiles reference the employee `id`. Column names are snake_case; see the Supabase queries in `src/lib/services.js` and `src/auth/AuthContext.jsx` for the fields used.
+2. Create the database tables and `employee_directory` view queried by the app: `profiles`, `employees`, `payroll_records`, `leave_requests`, `notifications`, and `tasks`. Employee records use `id`, `employee_code`, `first_name`, `last_name`, `email`, `department`, `position`, and `basic_salary`. Payroll records use `employee_id`, `period`, `basic_pay`, `allowances`, `deductions`, `net_pay`, and `payment_status`; related records and staff profiles reference the employee `id`. Column names are snake_case; see the Supabase queries in `src/lib/services.js` and `src/auth/AuthContext.jsx` for the fields used.
 3. Configure Row Level Security and policies for the intended admin/staff access before using real employee or payroll data. The app's public anon key is not a substitute for database policies.
 4. Create the first admin user in Supabase Auth and insert a matching `profiles` row with the same user UUID as `id` and `role` set to `admin`. Admins sign in with their email; staff sign in with their employee ID.
 5. Add each employee's work email when creating their employee record. Admins can generate a one-time registration code from the Employees list; staff activate their account using the employee ID, that code, and a password.
 
 The app expects staff profile rows to use `role: "staff"` and an `employee_id` matching an employee record. Staff invitations also require the `staff_invite_codes` and `audit_logs` tables and the `consume_staff_invite`, `check_login_rate_limit`, and `reset_login_rate_limit` database functions used by the Edge Functions. Deploy the three Edge Functions after creating these database objects. This repository does not yet include SQL migrations or configure RLS policies, so those objects and access rules must be created in the Supabase project before these flows can work.
+
+The Edge Functions always allow `http://localhost:5173` and `http://127.0.0.1:5173` for local development. They also allow any additional exact origins listed in the optional `PAYDAY_ALLOWED_ORIGINS` Supabase Edge Function secret, as a comma-separated list. Deploy the Edge Functions after changing their code.
 
 ## Build and lint
 

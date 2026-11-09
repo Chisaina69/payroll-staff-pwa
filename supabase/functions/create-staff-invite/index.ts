@@ -67,6 +67,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (employeeError) {
+      console.error("Failed to load employee for staff invite:", employeeError);
       return respond(headers, { error: "Unable to process request" }, 500);
     }
 
@@ -89,6 +90,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (profileError) {
+      console.error("Failed to check staff profile for invite:", profileError);
       return respond(headers, { error: "Unable to process request" }, 500);
     }
 
@@ -112,6 +114,7 @@ Deno.serve(async (req: Request) => {
       .is("used_at", null);
 
     if (invalidateError) {
+      console.error("Failed to invalidate prior staff invites:", invalidateError);
       return respond(headers, { error: "Unable to issue code" }, 500);
     }
 
@@ -125,6 +128,7 @@ Deno.serve(async (req: Request) => {
       });
 
     if (insertError) {
+      console.error("Failed to store staff invite:", insertError);
       return respond(headers, { error: "Unable to issue code" }, 500);
     }
 

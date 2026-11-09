@@ -71,9 +71,14 @@ export async function createStaffInvite(employeeCode) {
   );
 
   if (error) {
-    throw new Error(
-      data?.error || "Unable to generate a staff registration code.",
-    );
+    let message = data?.error;
+    if (!message && error.context instanceof Response) {
+      const response = error.context;
+      const responseData = await response.clone().json().catch(() => null);
+      message = responseData?.error ||
+        `Unable to generate a staff registration code (HTTP ${response.status}).`;
+    }
+    throw new Error(message || error.message || "Unable to generate a staff registration code.");
   }
 
   if (!data?.registration_code) {

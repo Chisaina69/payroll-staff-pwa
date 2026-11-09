@@ -18,6 +18,7 @@ export default function StaffDashboard() {
   const { logout, profile, employeeId } = useAuth();
 
   const [payslips, setPayslips] = useState([]);
+  const [payrollLoadError, setPayrollLoadError] = useState("");
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -33,7 +34,9 @@ export default function StaffDashboard() {
   useEffect(() => {
     if (!employeeId) return;
     const unsubs = [
-      subscribePayroll(setPayslips, { employeeId }),
+      subscribePayroll(setPayslips, { employeeId }, (error) => {
+        setPayrollLoadError(error?.message || "");
+      }),
       subscribeLeaveRequests(setLeaveRequests, { employeeId }),
       subscribeNotifications(employeeId, setNotifications),
       subscribeTasks(setTasks, { employeeId }),
@@ -93,21 +96,28 @@ export default function StaffDashboard() {
       {tab === "payslips" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Payslips</h2>
+          {payrollLoadError && (
+            <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load payslips from Supabase: {payrollLoadError}
+            </p>
+          )}
           {payslips.length === 0 ? <EmptyState>No payslips yet.</EmptyState> : (
             <Card className="overflow-x-auto p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
-                    <th className="px-4 py-3">Period</th><th className="px-4 py-3">Gross</th><th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net</th>
+                    <th className="px-4 py-3">Period</th><th className="px-4 py-3">Basic Pay</th><th className="px-4 py-3">Allowances</th><th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net Pay</th><th className="px-4 py-3">Payment Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {payslips.map((p) => (
                     <tr key={p.id} className="border-b border-line last:border-0">
-                      <td className="px-4 py-3">{p.period}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.gross).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.nssf + p.shif + p.ahl + p.paye).toLocaleString()}</td>
-                      <td className="px-4 py-3 font-semibold text-accent-600">KES {Number(p.net).toLocaleString()}</td>
+                      <td className="px-4 py-3">{p.pay_period_start} – {p.pay_period_end}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.basic_pay).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.allowances).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.deductions).toLocaleString()}</td>
+                      <td className="px-4 py-3 font-semibold text-accent-600">KES {Number(p.net_pay).toLocaleString()}</td>
+                      <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
                     </tr>
                   ))}
                 </tbody>

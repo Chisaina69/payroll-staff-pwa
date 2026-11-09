@@ -53,18 +53,16 @@ export const publicAuthClient = createClient(
   },
 );
 
-const allowedOrigins = (
-  Deno.env.get("PAYDAY_ALLOWED_ORIGINS") ??
-    "http://localhost:5173"
-)
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  ...(Deno.env.get("PAYDAY_ALLOWED_ORIGINS") ?? "").split(","),
+].map((origin) => origin.trim()).filter(Boolean));
 
 export function getCorsHeaders(req: Request): Headers | null {
   const origin = req.headers.get("origin");
 
-  if (origin && !allowedOrigins.includes(origin)) {
+  if (origin && !allowedOrigins.has(origin)) {
     return null;
   }
 

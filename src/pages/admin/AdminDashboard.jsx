@@ -8,6 +8,7 @@ import {
   subscribeTasks,
   setLeaveRequestStatus,
   sendNotification,
+  confirmPayrollPayment,
 } from "../../lib/services";
 import DashboardShell from "../../components/DashboardShell";
 import { Badge, Button, Card, EmptyState, StatCard } from "../../components/ui";
@@ -21,6 +22,7 @@ export default function AdminDashboard() {
   const [employees, setEmployees] = useState([]);
   const [employeeLoadError, setEmployeeLoadError] = useState("");
   const [payroll, setPayroll] = useState([]);
+  const [payrollLoadError, setPayrollLoadError] = useState("");
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [tab, setTab] = useState("employees");
@@ -30,13 +32,17 @@ export default function AdminDashboard() {
   const [invite, setInvite] = useState(null);
   const [inviteError, setInviteError] = useState("");
   const [invitingEmployee, setInvitingEmployee] = useState(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState(null);
 
   useEffect(() => {
     const unsubs = [
       subscribeEmployees(setEmployees, (error) => {
         setEmployeeLoadError(error?.message || "");
       }),
-      subscribePayroll(setPayroll),
+      subscribePayroll(setPayroll, {}, (error) => {
+        setPayrollLoadError(error?.message || "");
+      }),
       subscribeLeaveRequests(setLeaveRequests),
       subscribeTasks(setTasks),
     ];
@@ -66,9 +72,35 @@ export default function AdminDashboard() {
     setShowAddEmployee(false);
   }
 
+  function handlePayrollCreated(record) {
+    setPayroll((current) => [
+      record,
+      ...current.filter((item) => item.id !== record.id),
+    ].sort((a, b) =>
+      b.pay_period_start.localeCompare(a.pay_period_start)
+    ));
+    setPayrollLoadError("");
+    setShowGeneratePayslip(false);
+  }
+
   async function handleLeaveDecision(request, status) {
     await setLeaveRequestStatus(request.id, status);
     await sendNotification(request.employee_id, `Your ${request.type} leave request has been ${status}.`);
+  }
+
+  async function handlePaymentConfirmation(payrollId) {
+    setPaymentError("");
+    setConfirmingPaymentId(payrollId);
+    try {
+      const updatedRecord = await confirmPayrollPayment(payrollId);
+      setPayroll((current) =>
+        current.map((record) => record.id === updatedRecord.id ? updatedRecord : record)
+      );
+    } catch (error) {
+      setPaymentError(error.message || "Unable to confirm this payment.");
+    } finally {
+      setConfirmingPaymentId(null);
+    }
   }
 
   async function handleCreateInvite(employeeCode) {
@@ -185,29 +217,55 @@ export default function AdminDashboard() {
             )}
           </div>
           {employees.length === 0 && <EmptyState>Add an employee first before generating a payslip.</EmptyState>}
-          {showGeneratePayslip && <GeneratePayslipForm employees={employees} onDone={() => setShowGeneratePayslip(false)} />}
+          {showGeneratePayslip && <GeneratePayslipForm employees={employees} onDone={handlePayrollCreated} />}
+          {payrollLoadError && (
+            <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load payroll records from Supabase: {payrollLoadError}
+            </p>
+          )}
+          {paymentError && (
+            <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              Payment confirmation failed: {paymentError}
+            </p>
+          )}
           {payroll.length > 0 && (
             <Card className="overflow-x-auto p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
-                    <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Period</th><th className="px-4 py-3">Gross</th>
-                    <th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net</th>
+                    <th className="px-4 py-3">Employee</th><th className="px-4 py-3">Period</th><th className="px-4 py-3">Basic Pay</th>
+                    <th className="px-4 py-3">Allowances</th><th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net Pay</th><th className="px-4 py-3">Payment Status</th><th className="px-4 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {payroll.map((p) => (
                     <tr key={p.id} className="border-b border-line last:border-0 hover:bg-surface-alt/60">
                       <td className="px-4 py-3 font-medium text-ink-900">{employeeName(p.employee_id)}</td>
-                      <td className="px-4 py-3 text-ink-600">{p.period}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.gross).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.nssf + p.shif + p.ahl + p.paye).toLocaleString()}</td>
-                      <td className="px-4 py-3 font-semibold text-accent-600">KES {Number(p.net).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">{p.pay_period_start} – {p.pay_period_end}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.basic_pay).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.allowances).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-ink-600">KES {Number(p.deductions).toLocaleString()}</td>
+                      <td className="px-4 py-3 font-semibold text-accent-600">KES {Number(p.net_pay).toLocaleString()}</td>
+                      <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
+                      <td className="px-4 py-3">
+                        {p.payment_status === "pending" && (
+                          <Button
+                            className="whitespace-nowrap px-3 py-1.5 text-xs"
+                            disabled={confirmingPaymentId !== null}
+                            onClick={() => handlePaymentConfirmation(p.id)}
+                          >
+                            {confirmingPaymentId === p.id ? "Confirming..." : "Confirm payment"}
+                          </Button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </Card>
+          )}
+          {payroll.length === 0 && !payrollLoadError && (
+            <EmptyState>No payroll records yet. Generate a payslip to get started.</EmptyState>
           )}
         </section>
       )}

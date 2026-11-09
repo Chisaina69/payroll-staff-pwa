@@ -119,38 +119,133 @@ export async function fetchDirectory() {
 
 // ---------- Payroll ----------
 
-export function subscribePayroll(onChange, { employeeId } = {}) {
+export function subscribePayroll(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
-    let query = supabase.from("payroll").select("*").order("period", { ascending: false });
+    let query = supabase
+      .from("payroll_records")
+      .select("*")
+      .order("pay_period_start", { ascending: false });
     if (employeeId) query = query.eq("employee_id", employeeId);
     const { data, error } = await query;
-    if (!error) {
-      await localDb.payroll.bulkPut(data);
-      onChange(data);
-    } else {
+
+    if (error) {
+      console.error("Unable to load payroll records:", error.message);
+      onError(error);
       const all = await localDb.payroll.toArray();
       onChange(employeeId ? all.filter((p) => p.employee_id === employeeId) : all);
+      return;
     }
+
+    try {
+      await localDb.payroll.bulkPut(data || []);
+    } catch (cacheError) {
+      console.error("Unable to cache payroll records:", cacheError);
+    }
+
+    onError(null);
+    onChange(data || []);
   }
-  fetchAndNotify();
+  fetchAndNotify().catch((error) => {
+    console.error("Unexpected payroll list error:", error);
+    onError(error);
+  });
   const channel = supabase
     .channel(`payroll-changes-${employeeId || "all"}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "payroll" }, fetchAndNotify)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "payroll_records" },
+      () => {
+        fetchAndNotify().catch((error) => {
+          console.error("Unable to refresh payroll records:", error);
+          onError(error);
+        });
+      },
+    )
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-// Takes gross pay only — NSSF/SHIF/AHL/PAYE/net are all computed here from
-// current statutory rates, not typed in manually.
-export async function generatePayslip({ employeeId, period, gross }) {
-  const breakdown = computePayslip(gross);
-  const { error } = await supabase.from("payroll").insert({
+export async function confirmPayrollPayment(payrollId) {
+  const { data, error } = await supabase
+    .from("payroll_records")
+    .update({ payment_status: "paid" })
+    .eq("id", payrollId)
+    .eq("payment_status", "pending")
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Payment confirmation failed:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function generatePayslip({
+  employeeId,
+  period,
+  allowances = 0,
+  createdBy,
+}) {
+  if (typeof period !== "string" || !/^\d{4}-\d{2}$/.test(period)) {
+    throw new Error("Choose a valid pay period.");
+  }
+
+  const [yearText, monthText] = period.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+
+  if (month < 1 || month > 12) {
+    throw new Error("Choose a valid pay period.");
+  }
+
+  if (!createdBy) {
+    throw new Error("Unable to identify the payroll creator. Sign in again.");
+  }
+
+  const { data: employee, error: employeeError } = await supabase
+    .from("employees")
+    .select("basic_salary")
+    .eq("id", employeeId)
+    .single();
+
+  if (employeeError) throw employeeError;
+
+  const basicPay = Number(employee.basic_salary);
+  const allowanceAmount = Number(allowances);
+  if (
+    !Number.isFinite(basicPay) ||
+    basicPay < 0 ||
+    !Number.isFinite(allowanceAmount) ||
+    allowanceAmount < 0
+  ) {
+    throw new Error("Basic pay and allowances must be valid non-negative amounts.");
+  }
+
+  const breakdown = computePayslip(basicPay + allowanceAmount);
+  const deductions = breakdown.nssf + breakdown.shif + breakdown.ahl + breakdown.paye;
+  const payPeriodStart = `${yearText}-${monthText}-01`;
+  const payPeriodEnd = new Date(Date.UTC(year, month, 0))
+    .toISOString()
+    .slice(0, 10);
+  const record = {
     employee_id: employeeId,
-    period,
-    ...breakdown,
-  });
+    pay_period_start: payPeriodStart,
+    pay_period_end: payPeriodEnd,
+    basic_pay: basicPay,
+    allowances: allowanceAmount,
+    deductions,
+    payment_status: "pending",
+    created_by: createdBy,
+  };
+  const { data: createdRecord, error } = await supabase
+    .from("payroll_records")
+    .insert(record)
+    .select("*")
+    .single();
   if (error) throw error;
-  return breakdown;
+  return createdRecord;
 }
 
 // ---------- Leave Requests (with offline queueing) ----------

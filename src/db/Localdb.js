@@ -19,3 +19,21 @@ localDb.version(2).stores({
   tasks: "id, assigned_to, status, due_date",
   pendingWrites: "++localId, kind, createdAt",
 });
+
+localDb.version(3).stores({
+  employees: "id, employee_code, first_name, last_name, department, status",
+  payroll: "id, employee_id, period, payment_status",
+  leaveRequests: "id, employee_id, status, submitted_at",
+  notifications: "id, recipient_id, read, created_at",
+  tasks: "id, assigned_to, status, due_date",
+  pendingWrites: "++localId, kind, createdAt",
+});
+
+localDb.version(4).stores({
+  employees: "id, employee_code, first_name, last_name, department, status",
+  payroll: "id, employee_id, pay_period_start, payment_status",
+  leaveRequests: "id, employee_id, status, submitted_at",
+  notifications: "id, recipient_id, read, created_at",
+  tasks: "id, assigned_to, status, due_date",
+  pendingWrites: "++localId, kind, createdAt",
+});

@@ -36,6 +36,7 @@ export function Badge({ status }) {
     active: "bg-success/10 text-success",
     approved: "bg-success/10 text-success",
     completed: "bg-success/10 text-success",
+    paid: "bg-success/10 text-success",
     pending: "bg-warning/10 text-warning",
     rejected: "bg-danger/10 text-danger",
     inactive: "bg-surface-alt text-ink-500",
