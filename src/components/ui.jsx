@@ -18,9 +18,9 @@ export function Button({ variant = "primary", className = "", type = "button", .
   );
 }
 
-export function Field({ label, children }) {
+export function Field({ label, children, className = "" }) {
   return (
-    <label className="block space-y-1.5 text-sm font-medium text-ink-700">
+    <label className={`block min-w-0 space-y-1.5 text-sm font-medium text-ink-700 ${className}`}>
       <span>{label}</span>
       {children}
     </label>

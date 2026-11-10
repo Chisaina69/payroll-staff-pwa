@@ -201,7 +201,7 @@ function StaffDashboard() {
       onTabChange={setTab}
       onLogout={logout}
     >
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-6 hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
         <StatCard label="Annual & Sick Balance" value={`${paidLeaveBalance} working days`} accent />
         <StatCard label="Payslips" value={payslips.length} />
         <StatCard label="Open Tasks" value={pendingTasks} accent={pendingTasks > 0} />
@@ -218,7 +218,64 @@ function StaffDashboard() {
           )}
           {receiptError && <p role="alert" className="mb-4 text-sm text-danger">{receiptError}</p>}
           {payslips.length === 0 ? <EmptyState>No payslips yet.</EmptyState> : (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {payslips.map((payslip) => {
+                const details = getPayslipDetails(payslip);
+                const expanded = expandedPayslipId === payslip.id;
+                return (
+                  <Card key={payslip.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-ink-900">{payslip.pay_period_start} – {payslip.pay_period_end}</p>
+                        <p className="mt-1 text-xs text-ink-500">Net pay</p>
+                        <p className="text-lg font-semibold text-accent-600">{formatCurrency(details.netPay)}</p>
+                      </div>
+                      <Badge status={payslip.payment_status} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs">
+                      <div><p className="text-ink-500">Basic pay</p><p className="mt-0.5 font-medium">{formatCurrency(details.basicPay)}</p></div>
+                      <div><p className="text-ink-500">Allowances</p><p className="mt-0.5 font-medium">{formatCurrency(details.allowances)}</p></div>
+                      <div><p className="text-ink-500">Deductions</p><p className="mt-0.5 font-medium">{formatCurrency(details.deductionTotal)}</p></div>
+                      <div><p className="text-ink-500">Gross pay</p><p className="mt-0.5 font-medium">{formatCurrency(details.gross)}</p></div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="mt-3 w-full"
+                      aria-expanded={expanded}
+                      onClick={() => setExpandedPayslipId(expanded ? null : payslip.id)}
+                    >
+                      {expanded ? "Hide receipt" : "View receipt"}
+                    </Button>
+                    {expanded && (
+                      <div className="mt-3 border-t border-line pt-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <h3 className="font-semibold text-ink-900">Receipt details</h3>
+                          <Button className="px-3 py-2 text-xs" onClick={() => handlePayslipReceipt(payslip)}>
+                            Download / Print
+                          </Button>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          {details.deductions.map((deduction) => (
+                            <p key={deduction.label} className="flex justify-between gap-3">
+                              <span>{deduction.label}</span>
+                              <span className="font-medium">{formatCurrency(deduction.amount)}</span>
+                            </p>
+                          ))}
+                          <p className="flex justify-between border-t border-line pt-2 font-semibold">
+                            <span>Total deductions</span><span>{formatCurrency(details.deductionTotal)}</span>
+                          </p>
+                          <p className="flex justify-between text-base font-semibold text-accent-600">
+                            <span>Net pay</span><span>{formatCurrency(details.netPay)}</span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -303,6 +360,7 @@ function StaffDashboard() {
                 </tbody>
               </table>
             </Card>
+            </>
           )}
         </section>
       )}
@@ -314,8 +372,8 @@ function StaffDashboard() {
             <p className="mb-3 text-sm text-ink-500">
               Annual and sick leave balance: <span className="font-semibold text-accent-600">{paidLeaveBalance} working days</span> remaining this year. Unpaid leave does not use this balance.
             </p>
-            <form onSubmit={handleLeaveSubmit} className="flex flex-wrap items-end gap-3">
-              <Field label="Type">
+            <form onSubmit={handleLeaveSubmit} className="grid grid-cols-2 items-end gap-3 sm:grid-cols-4">
+              <Field label="Type" className="col-span-2 sm:col-span-1">
                 <select className={inputClass} value={leaveType} onChange={(e) => setLeaveType(e.target.value)}>
                   <option value="Annual">Annual</option>
                   <option value="Sick">Sick</option>
@@ -324,7 +382,7 @@ function StaffDashboard() {
               </Field>
               <Field label="Start"><input type="date" className={inputClass} value={startDate} onChange={(e) => setStartDate(e.target.value)} required /></Field>
               <Field label="End"><input type="date" min={startDate || undefined} className={inputClass} value={endDate} onChange={(e) => setEndDate(e.target.value)} required /></Field>
-              <Field label="Reason">
+              <Field label="Reason" className="col-span-2 sm:col-span-3">
                 <textarea
                   className={inputClass}
                   value={leaveReason}
@@ -334,7 +392,7 @@ function StaffDashboard() {
                   required
                 />
               </Field>
-              <Button type="submit" disabled={submittingLeave || requestedLeaveDays === 0 || paidLeaveExceedsBalance}>
+              <Button type="submit" className="col-span-2 sm:col-span-1" disabled={submittingLeave || requestedLeaveDays === 0 || paidLeaveExceedsBalance}>
                 {submittingLeave ? "Submitting..." : "Submit request"}
               </Button>
             </form>
@@ -364,7 +422,26 @@ function StaffDashboard() {
             </p>
           )}
           {leaveRequests.length === 0 ? <EmptyState>No leave requests yet.</EmptyState> : (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {leaveRequests.map((request) => (
+                <Card key={request.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink-900">{request.leave_type} leave</p>
+                      <p className="mt-0.5 text-xs text-ink-500">{request.days} working days</p>
+                    </div>
+                    <Badge status={request.status} />
+                  </div>
+                  <p className="mt-3 text-sm text-ink-700">{request.start_date} → {request.end_date}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink-500">{request.reason}</p>
+                  <p className="mt-2 text-xs text-ink-400">
+                    Submitted {request.created_at ? new Date(request.created_at).toLocaleDateString() : "—"}
+                  </p>
+                </Card>
+              ))}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -387,6 +464,7 @@ function StaffDashboard() {
                 </tbody>
               </table>
             </Card>
+            </>
           )}
         </section>
       )}
@@ -506,7 +584,17 @@ function StaffDashboard() {
       {tab === "directory" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Employee Directory</h2>
-          <Card className="overflow-x-auto p-0">
+          <div className="space-y-3 md:hidden">
+            {directory.map((person) => (
+              <Card key={person.id || person.employee_code || person.employee_id} className="p-4">
+                <p className="font-semibold text-ink-900">{person.first_name ? `${person.first_name} ${person.last_name || ""}`.trim() : person.name}</p>
+                <p className="mt-1 text-sm text-ink-600">{person.position || "—"}</p>
+                <p className="mt-2 text-xs text-ink-500">{person.department || "—"}</p>
+              </Card>
+            ))}
+            {directory.length === 0 && <EmptyState>No directory entries yet.</EmptyState>}
+          </div>
+          <Card className="hidden overflow-x-auto p-0 md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">

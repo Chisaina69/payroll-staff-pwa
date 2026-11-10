@@ -245,6 +245,50 @@ function AdminDashboard() {
     }
   }
 
+  function renderEmployeeAccountAction(employee) {
+    if (inviteStatuses[employee.id] === "active") {
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge status="active" />
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            disabled={invitingEmployee !== null}
+            onClick={() => handleCreateInvite(employee.employee_code, "password_reset")}
+          >
+            {invitingEmployee === employee.employee_code ? "Generating..." : "Password reset invite"}
+          </Button>
+        </div>
+      );
+    }
+
+    if (inviteStatuses[employee.id] === "invited") {
+      return (
+        <div className="flex items-center gap-2">
+          <Badge status="invited" />
+          <span className="text-xs text-ink-500">Invite sent</span>
+        </div>
+      );
+    }
+
+    return (
+      <Button
+        className="px-3 py-1.5 text-xs"
+        disabled={
+          employee.status !== "active" ||
+          invitingEmployee !== null ||
+          inviteStatusesKey !== employeeIdsKey ||
+          Boolean(inviteStatusError)
+        }
+        onClick={() => handleCreateInvite(employee.employee_code)}
+      >
+        {invitingEmployee === employee.employee_code
+          ? "Generating..."
+          : inviteStatuses[employee.id] === "expired" ? "Resend invite" : "Create invite"}
+      </Button>
+    );
+  }
+
   async function handleCopyInviteLink() {
     try {
       await navigator.clipboard.writeText(invite.inviteLink);
@@ -279,7 +323,7 @@ function AdminDashboard() {
       onTabChange={setTab}
       onLogout={logout}
     >
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="mb-6 hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
         <StatCard label="Employees" value={employees.length} />
         <StatCard label="Payslips Issued" value={payroll.length} />
         <StatCard label="Pending Leave" value={pendingLeave} accent={pendingLeave > 0} />
@@ -335,7 +379,32 @@ function AdminDashboard() {
           {employees.length === 0 ? (
             <EmptyState>No employees yet. Add one to get started.</EmptyState>
           ) : (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {employees.map((employee) => (
+                <Card key={employee.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-900">
+                        {employee.first_name} {employee.last_name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-ink-500">{employee.employee_code}</p>
+                    </div>
+                    <Badge status={employee.status} />
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-line pt-3 text-xs">
+                    <div><dt className="text-ink-500">Department</dt><dd className="mt-0.5 font-medium text-ink-700">{employee.department || "—"}</dd></div>
+                    <div><dt className="text-ink-500">Position</dt><dd className="mt-0.5 font-medium text-ink-700">{employee.position || "—"}</dd></div>
+                    <div className="col-span-2"><dt className="text-ink-500">Monthly salary</dt><dd className="mt-0.5 font-medium text-ink-700">KES {Number(employee.basic_salary).toLocaleString()}</dd></div>
+                  </dl>
+                  <div className="mt-3 border-t border-line pt-3">
+                    <p className="mb-2 text-xs font-medium text-ink-500">Account</p>
+                    {renderEmployeeAccountAction(employee)}
+                  </div>
+                </Card>
+              ))}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -352,52 +421,13 @@ function AdminDashboard() {
                       <td className="px-4 py-3 text-ink-600">{e.position}</td>
                       <td className="px-4 py-3 text-ink-600">KES {Number(e.basic_salary).toLocaleString()}</td>
                       <td className="px-4 py-3"><Badge status={e.status} /></td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {inviteStatuses[e.id] === "active" ? (
-                            <>
-                              <Badge status="active" />
-                              <Button
-                                variant="secondary"
-                                className="whitespace-nowrap px-3 py-1.5 text-xs"
-                                disabled={invitingEmployee !== null}
-                                onClick={() => handleCreateInvite(e.employee_code, "password_reset")}
-                              >
-                                {invitingEmployee === e.employee_code
-                                  ? "Generating..."
-                                  : "Password reset invite"}
-                              </Button>
-                            </>
-                          ) : inviteStatuses[e.id] === "invited" ? (
-                            <>
-                              <Badge status="invited" />
-                              <span className="text-xs text-ink-500">Invite sent</span>
-                            </>
-                          ) : (
-                            <Button
-                              className="whitespace-nowrap px-3 py-1.5 text-xs"
-                              disabled={
-                                e.status !== "active" ||
-                                invitingEmployee !== null ||
-                                inviteStatusesKey !== employeeIdsKey ||
-                                Boolean(inviteStatusError)
-                              }
-                              onClick={() => handleCreateInvite(e.employee_code)}
-                            >
-                              {invitingEmployee === e.employee_code
-                                ? "Generating..."
-                                : inviteStatuses[e.id] === "expired"
-                                  ? "Resend invite"
-                                  : "Create invite"}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
+                      <td className="px-4 py-3">{renderEmployeeAccountAction(e)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </Card>
+            </>
           )}
         </section>
       )}
@@ -423,7 +453,38 @@ function AdminDashboard() {
             </p>
           )}
           {payroll.length > 0 && (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {payroll.map((record) => (
+                <Card key={record.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-900">{employeeName(record.employee_id)}</p>
+                      <p className="mt-0.5 text-xs text-ink-500">
+                        {record.pay_period_start} – {record.pay_period_end}
+                      </p>
+                    </div>
+                    <Badge status={record.payment_status} />
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3 text-xs">
+                    <div><dt className="text-ink-500">Basic pay</dt><dd className="mt-0.5 font-medium">KES {Number(record.basic_pay).toLocaleString()}</dd></div>
+                    <div><dt className="text-ink-500">Allowances</dt><dd className="mt-0.5 font-medium">KES {Number(record.allowances).toLocaleString()}</dd></div>
+                    <div><dt className="text-ink-500">Deductions</dt><dd className="mt-0.5 font-medium">KES {Number(record.deductions).toLocaleString()}</dd></div>
+                    <div><dt className="text-ink-500">Net pay</dt><dd className="mt-0.5 font-semibold text-accent-600">KES {Number(record.net_pay).toLocaleString()}</dd></div>
+                  </dl>
+                  {record.payment_status === "pending" && (
+                    <Button
+                      className="mt-3 w-full"
+                      disabled={confirmingPaymentId !== null}
+                      onClick={() => handlePaymentConfirmation(record.id)}
+                    >
+                      {confirmingPaymentId === record.id ? "Confirming..." : "Confirm payment"}
+                    </Button>
+                  )}
+                </Card>
+              ))}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -457,6 +518,7 @@ function AdminDashboard() {
                 </tbody>
               </table>
             </Card>
+            </>
           )}
           {payroll.length === 0 && !payrollLoadError && (
             <EmptyState>No payroll records yet. Generate a payslip to get started.</EmptyState>
@@ -475,7 +537,40 @@ function AdminDashboard() {
           {leaveRequests.length === 0 ? (
             <EmptyState>No leave requests yet.</EmptyState>
           ) : (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {leaveRequests.map((request) => (
+                <Card key={request.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink-900">{employeeName(request.employee_id)}</p>
+                      <p className="mt-0.5 text-xs text-ink-500">{request.leave_type} · {request.days} working days</p>
+                    </div>
+                    <Badge status={request.status} />
+                  </div>
+                  <p className="mt-3 text-sm text-ink-700">{request.start_date} → {request.end_date}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink-500">{request.reason}</p>
+                  <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                    <Button
+                      className="flex-1 px-3 py-2 text-xs"
+                      disabled={updatingLeaveId !== null || request.status === "approved"}
+                      onClick={() => handleLeaveDecision(request, "approved")}
+                    >
+                      {updatingLeaveId === request.id ? "Saving..." : request.status === "approved" ? "Approved" : "Approve"}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      className="flex-1 px-3 py-2 text-xs"
+                      disabled={updatingLeaveId !== null || request.status === "rejected"}
+                      onClick={() => handleLeaveDecision(request, "rejected")}
+                    >
+                      {request.status === "rejected" ? "Rejected" : "Reject"}
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -517,6 +612,7 @@ function AdminDashboard() {
                 </tbody>
               </table>
             </Card>
+            </>
           )}
         </section>
       )}
@@ -545,7 +641,24 @@ function AdminDashboard() {
           {tasks.length === 0 ? (
             <EmptyState>No tasks assigned yet.</EmptyState>
           ) : (
-            <Card className="overflow-x-auto p-0">
+            <>
+            <div className="space-y-3 md:hidden">
+              {tasks.map((task) => (
+                <Card key={task.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="min-w-0 flex-1 font-semibold text-ink-900">{task.title}</p>
+                    <Badge status={task.progress_status || task.status} />
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink-600">{task.description}</p>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs">
+                    <span className="text-ink-600">{employeeName(task.employee_id || task.assigned_to)}</span>
+                    <span className="text-ink-500">Due {task.due_date}</span>
+                    <Badge status={task.priority || "medium"} />
+                  </div>
+                </Card>
+              ))}
+            </div>
+            <Card className="hidden overflow-x-auto p-0 md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -568,6 +681,7 @@ function AdminDashboard() {
                 </tbody>
               </table>
             </Card>
+            </>
           )}
         </section>
       )}
