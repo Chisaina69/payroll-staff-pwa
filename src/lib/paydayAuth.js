@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-export async function loginWithEmployeeId(employeeCode, password) {
+async function loginWithEmployeeId(employeeCode, password) {
   const { data, error } = await supabase.functions.invoke(
     "employee-login",
     {
@@ -31,7 +31,7 @@ export async function loginWithEmployeeId(employeeCode, password) {
   return data;
 }
 
-export async function activateStaffAccount(
+async function activateStaffAccount(
   employeeCode,
   registrationCode,
   password,
@@ -60,7 +60,7 @@ export async function activateStaffAccount(
   return data;
 }
 
-export async function createStaffInvite(employeeCode, purpose = "activation") {
+async function createStaffInvite(employeeCode, purpose = "activation") {
   const { data, error } = await supabase.functions.invoke(
     "create-staff-invite",
     {
@@ -89,7 +89,7 @@ export async function createStaffInvite(employeeCode, purpose = "activation") {
   return data;
 }
 
-export async function requestStaffPasswordReset(employeeCode) {
+async function requestStaffPasswordReset(employeeCode) {
   const { data, error } = await supabase.functions.invoke("create-staff-invite", {
     body: {
       action: "request_password_reset",
@@ -115,10 +115,18 @@ export async function requestStaffPasswordReset(employeeCode) {
   return data;
 }
 
-export async function logout() {
+async function logout() {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
     throw new Error("Unable to log out. Please try again.");
   }
 }
+
+export {
+  activateStaffAccount,
+  createStaffInvite,
+  loginWithEmployeeId,
+  logout,
+  requestStaffPasswordReset,
+};

@@ -6,7 +6,7 @@ import {
   logout as logoutFromSupabase,
 } from "../lib/paydayAuth";
 
-export function AuthProvider({ children }) {
+function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +21,7 @@ export function AuthProvider({ children }) {
       console.error("Unable to load profile:", error.message);
       return null;
     }
+
     return data;
   }
 
@@ -70,3 +71,5 @@ export function AuthProvider({ children }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+export { AuthProvider };

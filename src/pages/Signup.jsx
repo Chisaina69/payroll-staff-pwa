@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
-import { Button, Field, inputClass } from "../components/ui";
+import { Button, Field } from "../components/ui";
+import { inputClass } from "../components/formStyles";
 import { activateStaffAccount } from "../lib/paydayAuth";
 
 function Signup() {

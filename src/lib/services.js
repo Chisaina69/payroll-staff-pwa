@@ -15,7 +15,7 @@ import { countLeaveWorkingDays } from "./leave";
 
 // ---------- Employees ----------
 
-export function subscribeEmployees(onChange, onError = () => {}) {
+function subscribeEmployees(onChange, onError = () => {}) {
   async function fetchAndNotify() {
     const { data, error } = await supabase
       .from("employees")
@@ -69,7 +69,7 @@ export function subscribeEmployees(onChange, onError = () => {}) {
   return () => supabase.removeChannel(channel);
 }
 
-export async function addEmployee(employeeId, data) {
+async function addEmployee(employeeId, data) {
   const [firstName, ...lastNameParts] = data.name.trim().split(/\s+/);
   const lastName = lastNameParts.join(" ");
   const monthlySalary = Number(data.salary);
@@ -102,14 +102,14 @@ export async function addEmployee(employeeId, data) {
   return employee;
 }
 
-export function updateEmployee(employeeId, data) {
+function updateEmployee(employeeId, data) {
   return supabase.from("employees").update(data).eq("id", employeeId);
 }
 
 // Employee directory: name/department/position only, no salary — reads
 // from the employee_directory VIEW (see schema), which enforces that at
 // the database level regardless of what this function requests.
-export async function fetchDirectory() {
+async function fetchDirectory() {
   const { data, error } = await supabase
     .from("employee_directory")
     .select("*")
@@ -118,7 +118,7 @@ export async function fetchDirectory() {
   return data;
 }
 
-export async function fetchEmployeeInviteStatuses(employeeIds) {
+async function fetchEmployeeInviteStatuses(employeeIds) {
   if (!employeeIds.length) return {};
 
   const { data, error } = await supabase.functions.invoke("create-staff-invite", {
@@ -145,7 +145,7 @@ export async function fetchEmployeeInviteStatuses(employeeIds) {
 
 // ---------- Payroll ----------
 
-export function subscribePayroll(onChange, { employeeId } = {}, onError = () => {}) {
+function subscribePayroll(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
     let query = supabase
       .from("payroll_records")
@@ -191,7 +191,7 @@ export function subscribePayroll(onChange, { employeeId } = {}, onError = () => 
   return () => supabase.removeChannel(channel);
 }
 
-export async function confirmPayrollPayment(payrollId) {
+async function confirmPayrollPayment(payrollId) {
   const { data, error } = await supabase
     .from("payroll_records")
     .update({ payment_status: "paid" })
@@ -208,7 +208,7 @@ export async function confirmPayrollPayment(payrollId) {
   return data;
 }
 
-export async function generatePayslip({
+async function generatePayslip({
   employeeId,
   period,
   allowances = 0,
@@ -276,7 +276,7 @@ export async function generatePayslip({
 
 // ---------- Leave Requests (with offline queueing) ----------
 
-export function subscribeLeaveRequests(onChange, { employeeId } = {}, onError = () => {}) {
+function subscribeLeaveRequests(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
     let query = supabase.from("leave_requests").select("*").order("created_at", { ascending: false });
     if (employeeId) query = query.eq("employee_id", employeeId);
@@ -315,7 +315,7 @@ export function subscribeLeaveRequests(onChange, { employeeId } = {}, onError = 
   return () => supabase.removeChannel(channel);
 }
 
-export async function submitLeaveRequest({ employeeId, type, startDate, endDate, reason }) {
+async function submitLeaveRequest({ employeeId, type, startDate, endDate, reason }) {
   if (!employeeId) throw new Error("Unable to identify your staff account. Sign in again.");
   if (!["Annual", "Sick", "Unpaid"].includes(type)) {
     throw new Error("Choose Annual, Sick, or Unpaid leave.");
@@ -353,7 +353,7 @@ export async function submitLeaveRequest({ employeeId, type, startDate, endDate,
   }
 }
 
-export async function setLeaveRequestStatus(id, status, reviewerId, currentStatus) {
+async function setLeaveRequestStatus(id, status, reviewerId, currentStatus) {
   if (!["approved", "rejected"].includes(status)) {
     throw new Error("Choose an approved or rejected status.");
   }
@@ -394,7 +394,7 @@ export async function setLeaveRequestStatus(id, status, reviewerId, currentStatu
 
 // Flushes any leave requests queued while offline. Registered to run on
 // the browser's 'online' event.
-export async function flushPendingWrites() {
+async function flushPendingWrites() {
   const pending = await localDb.pendingWrites.toArray();
   for (const item of pending) {
     if (item.kind === "leave_request") {
@@ -406,7 +406,7 @@ export async function flushPendingWrites() {
 
 // ---------- Notifications ----------
 
-export function subscribeNotifications(employeeId, onChange) {
+function subscribeNotifications(employeeId, onChange) {
   async function fetchAndNotify() {
     const { data, error } = await supabase
       .from("notifications")
@@ -429,7 +429,7 @@ export function subscribeNotifications(employeeId, onChange) {
   return () => supabase.removeChannel(channel);
 }
 
-export function subscribeAdminPasswordResetRequests(onChange, onError = () => {}) {
+function subscribeAdminPasswordResetRequests(onChange, onError = () => {}) {
   async function fetchAndNotify() {
     const { data, error } = await supabase
       .from("password_reset_requests")
@@ -463,7 +463,7 @@ export function subscribeAdminPasswordResetRequests(onChange, onError = () => {}
   return () => supabase.removeChannel(channel);
 }
 
-export async function markPasswordResetRequestRead(requestId) {
+async function markPasswordResetRequestRead(requestId) {
   const readAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("password_reset_requests")
@@ -482,7 +482,7 @@ export async function markPasswordResetRequestRead(requestId) {
   return readAt;
 }
 
-export async function markNotificationRead(notificationId, employeeId) {
+async function markNotificationRead(notificationId, employeeId) {
   const readAt = new Date().toISOString();
   const { error } = await supabase
     .from("notifications")
@@ -500,7 +500,7 @@ export async function markNotificationRead(notificationId, employeeId) {
   return readAt;
 }
 
-export function sendNotification(employeeId, title, message) {
+function sendNotification(employeeId, title, message) {
   return supabase.from("notifications").insert({
     employee_id: employeeId,
     title,
@@ -511,7 +511,7 @@ export function sendNotification(employeeId, title, message) {
 
 // ---------- Tasks ----------
 
-export function subscribeTasks(onChange, { employeeId } = {}, onError = () => {}) {
+function subscribeTasks(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
     try {
       let query = supabase.from("tasks").select("*").order("due_date", { ascending: true });
@@ -546,7 +546,7 @@ export function subscribeTasks(onChange, { employeeId } = {}, onError = () => {}
   return () => supabase.removeChannel(channel);
 }
 
-export async function assignTask({ title, description, assignedTo, assignedBy, dueDate, priority }) {
+async function assignTask({ title, description, assignedTo, assignedBy, dueDate, priority }) {
   const cleanTitle = typeof title === "string" ? title.trim() : "";
   const cleanDescription = typeof description === "string" ? description.trim() : "";
   const validPriorities = ["low", "medium", "high"];
@@ -577,7 +577,7 @@ export async function assignTask({ title, description, assignedTo, assignedBy, d
   return data;
 }
 
-export async function updateTaskProgress(taskId, status) {
+async function updateTaskProgress(taskId, status) {
   if (!["in_progress", "completed"].includes(status)) {
     throw new Error("Choose a valid task progress status.");
   }
@@ -587,3 +587,26 @@ export async function updateTaskProgress(taskId, status) {
   });
   if (error) throw error;
 }
+
+export {
+  addEmployee,
+  assignTask,
+  confirmPayrollPayment,
+  fetchDirectory,
+  fetchEmployeeInviteStatuses,
+  flushPendingWrites,
+  generatePayslip,
+  markNotificationRead,
+  markPasswordResetRequestRead,
+  sendNotification,
+  setLeaveRequestStatus,
+  submitLeaveRequest,
+  subscribeAdminPasswordResetRequests,
+  subscribeEmployees,
+  subscribeLeaveRequests,
+  subscribeNotifications,
+  subscribePayroll,
+  subscribeTasks,
+  updateEmployee,
+  updateTaskProgress,
+};

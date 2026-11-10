@@ -12,7 +12,7 @@ if (!supabaseUrl || !supabasePublishableKey) {
   );
 }
 
-export const supabase = createClient(
+const supabase = createClient(
   supabaseUrl,
   supabasePublishableKey,
   {
@@ -23,3 +23,5 @@ export const supabase = createClient(
     },
   }
 );
+
+export { supabase };

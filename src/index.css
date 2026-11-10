@@ -53,7 +53,7 @@
   textarea {
     touch-action: manipulation;
   }
-  @media (max-width: 767px) {
+  @media (max-width: 1023px) {
     input,
     select,
     textarea {

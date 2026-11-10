@@ -15,7 +15,7 @@ function RoleRedirect() {
   return <p className="p-10 text-ink-500">No role assigned to this account yet. Contact your administrator.</p>;
 }
 
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -28,3 +28,5 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
+export default App;

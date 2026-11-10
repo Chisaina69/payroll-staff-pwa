@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useAuth } from "../../auth/useAuth";
 import { generatePayslip } from "../../lib/services";
-import { Button, Card, Field, inputClass } from "../../components/ui";
+import { Button, Card, Field } from "../../components/ui";
+import { inputClass } from "../../components/formStyles";
 
-export default function GeneratePayslipForm({ employees, onDone }) {
+function GeneratePayslipForm({ employees, onDone }) {
   const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
   const [period, setPeriod] = useState("");
@@ -28,6 +29,7 @@ export default function GeneratePayslipForm({ employees, onDone }) {
     } finally {
       setSaving(false);
     }
+
   }
 
   return (
@@ -57,3 +59,5 @@ export default function GeneratePayslipForm({ employees, onDone }) {
     </Card>
   );
 }
+
+export default GeneratePayslipForm;

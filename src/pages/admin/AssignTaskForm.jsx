@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "../../auth/useAuth";
 import { assignTask } from "../../lib/services";
-import { Button, Card, Field, inputClass } from "../../components/ui";
+import { Button, Card, Field } from "../../components/ui";
+import { inputClass } from "../../components/formStyles";
 
 function AssignTaskForm({ employees, onDone, onCancel }) {
   const { user } = useAuth();

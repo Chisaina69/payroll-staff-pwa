@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 
-export const localDb = new Dexie("PaydayCache");
+const localDb = new Dexie("PaydayCache");
 
 localDb.version(1).stores({
   employees: "employee_id, name, department, status",
@@ -81,3 +81,5 @@ localDb.version(10).stores({
     .filter((notification) => notification.title === "Password reset requested")
     .delete();
 });
+
+export { localDb };

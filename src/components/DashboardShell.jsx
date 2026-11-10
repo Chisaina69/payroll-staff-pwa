@@ -1,10 +1,10 @@
 import { LogOut } from "lucide-react";
 
-export default function DashboardShell({ brand, navItems, activeTab, onTabChange, onLogout, children }) {
+function DashboardShell({ brand, navItems, activeTab, onTabChange, onLogout, children }) {
   return (
-    <div className="min-h-screen bg-paper md:flex">
+    <div className="min-h-screen bg-paper lg:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col justify-between bg-brand-900 px-4 py-6 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col justify-between bg-brand-900 px-4 py-6 lg:flex">
         <div>
           <span className="font-display px-2 text-2xl font-semibold text-white">Payday</span>
           <p className="mb-8 px-2 mt-1 text-xs text-brand-200">{brand}</p>
@@ -46,7 +46,7 @@ export default function DashboardShell({ brand, navItems, activeTab, onTabChange
 
       {/* Main column */}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-2.5 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface/95 px-4 py-2.5 backdrop-blur lg:hidden">
           <div>
             <span className="font-display text-lg font-semibold leading-tight text-brand-800">Payday</span>
             <p className="max-w-[72vw] truncate text-[11px] leading-tight text-ink-500">{brand}</p>
@@ -61,11 +61,11 @@ export default function DashboardShell({ brand, navItems, activeTab, onTabChange
           </button>
         </header>
 
-        <main className="min-w-0 flex-1 px-3 py-4 pb-24 sm:px-5 md:px-8 md:py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-3 py-4 pb-24 sm:px-5 lg:px-8 lg:py-8 lg:pb-8">{children}</main>
 
         <nav
           aria-label="Dashboard navigation"
-          className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface/95 px-1 pt-1 shadow-[0_-8px_24px_-18px_rgba(28,25,23,0.3)] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface/95 px-1 pt-1 shadow-[0_-8px_24px_-18px_rgba(28,25,23,0.3)] backdrop-blur lg:hidden"
           style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.25rem)" }}
         >
           {navItems.map((item) => {
@@ -100,3 +100,5 @@ export default function DashboardShell({ brand, navItems, activeTab, onTabChange
     </div>
   );
 }
+
+export default DashboardShell;

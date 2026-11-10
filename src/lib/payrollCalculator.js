@@ -6,7 +6,7 @@
 // figures as of 2026). Anyone picking up this file later should be able to
 // update just this block against KRA's current published rates.
 
-export const RATES = {
+const RATES = {
   NSSF_RATE: 0.06,            // 6% of pensionable pay
   NSSF_UPPER_LIMIT: 108000,   // contributions capped at this monthly pay
   SHIF_RATE: 0.0275,          // 2.75% of gross pay (replaced NHIF in 2024)
@@ -63,7 +63,7 @@ function round2(n) {
  * Computes a full, itemised payslip breakdown from gross pay alone.
  * Returns { gross, nssf, shif, ahl, paye, net }.
  */
-export function computePayslip(gross) {
+function computePayslip(gross) {
   const grossNum = Number(gross) || 0;
   const nssf = calculateNssf(grossNum);
   const shif = calculateShif(grossNum);
@@ -74,3 +74,5 @@ export function computePayslip(gross) {
 
   return { gross: grossNum, nssf, shif, ahl, paye, net };
 }
+
+export { computePayslip, RATES };

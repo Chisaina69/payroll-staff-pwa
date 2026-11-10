@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../auth/useAuth";
-import { Button, Field, inputClass } from "../components/ui";
+import { Button, Field } from "../components/ui";
+import { inputClass } from "../components/formStyles";
 import { requestStaffPasswordReset } from "../lib/paydayAuth";
 
 function Login() {

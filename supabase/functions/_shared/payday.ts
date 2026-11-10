@@ -29,7 +29,7 @@ if (!supabaseUrl) {
   throw new Error("Missing Supabase URL");
 }
 
-export const adminClient = createClient(
+const adminClient = createClient(
   supabaseUrl,
   getKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
   {
@@ -41,7 +41,7 @@ export const adminClient = createClient(
   },
 );
 
-export const publicAuthClient = createClient(
+const publicAuthClient = createClient(
   supabaseUrl,
   getKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"),
   {
@@ -60,7 +60,7 @@ const allowedOrigins = new Set([
   ...(Deno.env.get("PAYDAY_ALLOWED_ORIGINS") ?? "").split(","),
 ].map((origin) => origin.trim()).filter(Boolean));
 
-export function getCorsHeaders(req: Request): Headers | null {
+function getCorsHeaders(req: Request): Headers | null {
   const origin = req.headers.get("origin");
 
   if (origin && !allowedOrigins.has(origin)) {
@@ -82,7 +82,7 @@ export function getCorsHeaders(req: Request): Headers | null {
   return headers;
 }
 
-export function respond(
+function respond(
   headers: Headers,
   body: unknown,
   status = 200,
@@ -93,7 +93,7 @@ export function respond(
   });
 }
 
-export async function hashCode(code: string): Promise<string> {
+async function hashCode(code: string): Promise<string> {
   const bytes = new TextEncoder().encode(code);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
 
@@ -102,7 +102,7 @@ export async function hashCode(code: string): Promise<string> {
     .join("");
 }
 
-export function generateCode(): string {
+function generateCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
 
   return Array.from(bytes)
@@ -110,13 +110,13 @@ export function generateCode(): string {
     .join("");
 }
 
-export function isValidPassword(password: unknown): password is string {
+function isValidPassword(password: unknown): password is string {
   return typeof password === "string" &&
     password.length >= 12 &&
     password.length <= 128;
 }
 
-export async function requireAdmin(
+async function requireAdmin(
   req: Request,
 ): Promise<
   | { userId: string; error?: never }
@@ -159,3 +159,14 @@ export async function requireAdmin(
 
   return { userId: user.id };
 }
+
+export {
+  adminClient,
+  generateCode,
+  getCorsHeaders,
+  hashCode,
+  isValidPassword,
+  publicAuthClient,
+  requireAdmin,
+  respond,
+};

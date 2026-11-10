@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { addEmployee } from "../../lib/services";
-import { Button, Card, Field, inputClass } from "../../components/ui";
+import { Button, Card, Field } from "../../components/ui";
+import { inputClass } from "../../components/formStyles";
 
 function AddEmployeeForm({ onDone, onCancel }) {
   const [values, setValues] = useState({

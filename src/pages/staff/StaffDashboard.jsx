@@ -15,7 +15,8 @@ import { countLeaveWorkingDays } from "../../lib/leave";
 import { formatCurrency, getPayslipDetails, openPayslipReceipt } from "../../lib/payslipReceipt";
 import { supabase } from "../../lib/supabase";
 import DashboardShell from "../../components/DashboardShell";
-import { Badge, Button, Card, EmptyState, Field, StatCard, inputClass } from "../../components/ui";
+import { Badge, Button, Card, EmptyState, Field, StatCard } from "../../components/ui";
+import { inputClass } from "../../components/formStyles";
 
 const CURRENT_LEAVE_YEAR = new Date().getFullYear();
 
@@ -201,7 +202,7 @@ function StaffDashboard() {
       onTabChange={setTab}
       onLogout={logout}
     >
-      <div className="mb-6 hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
+      <div className="mb-6 hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4">
         <StatCard label="Annual & Sick Balance" value={`${paidLeaveBalance} working days`} accent />
         <StatCard label="Payslips" value={payslips.length} />
         <StatCard label="Open Tasks" value={pendingTasks} accent={pendingTasks > 0} />
@@ -219,7 +220,7 @@ function StaffDashboard() {
           {receiptError && <p role="alert" className="mb-4 text-sm text-danger">{receiptError}</p>}
           {payslips.length === 0 ? <EmptyState>No payslips yet.</EmptyState> : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {payslips.map((payslip) => {
                 const details = getPayslipDetails(payslip);
                 const expanded = expandedPayslipId === payslip.id;
@@ -275,7 +276,7 @@ function StaffDashboard() {
                 );
               })}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -423,7 +424,7 @@ function StaffDashboard() {
           )}
           {leaveRequests.length === 0 ? <EmptyState>No leave requests yet.</EmptyState> : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {leaveRequests.map((request) => (
                 <Card key={request.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -441,7 +442,7 @@ function StaffDashboard() {
                 </Card>
               ))}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -584,7 +585,7 @@ function StaffDashboard() {
       {tab === "directory" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Employee Directory</h2>
-          <div className="space-y-3 md:hidden">
+          <div className="space-y-3 lg:hidden">
             {directory.map((person) => (
               <Card key={person.id || person.employee_code || person.employee_id} className="p-4">
                 <p className="font-semibold text-ink-900">{person.first_name ? `${person.first_name} ${person.last_name || ""}`.trim() : person.name}</p>
@@ -594,7 +595,7 @@ function StaffDashboard() {
             ))}
             {directory.length === 0 && <EmptyState>No directory entries yet.</EmptyState>}
           </div>
-          <Card className="hidden overflow-x-auto p-0 md:block">
+          <Card className="hidden overflow-x-auto p-0 lg:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">

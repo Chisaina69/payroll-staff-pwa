@@ -5,10 +5,7 @@ const buttonVariants = {
   danger: "bg-danger text-white hover:opacity-90",
 };
 
-export const inputClass =
-  "w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
-
-export function Button({ variant = "primary", className = "", type = "button", ...props }) {
+function Button({ variant = "primary", className = "", type = "button", ...props }) {
   return (
     <button
       type={type}
@@ -18,7 +15,7 @@ export function Button({ variant = "primary", className = "", type = "button", .
   );
 }
 
-export function Field({ label, children, className = "" }) {
+function Field({ label, children, className = "" }) {
   return (
     <label className={`block min-w-0 space-y-1.5 text-sm font-medium text-ink-700 ${className}`}>
       <span>{label}</span>
@@ -27,11 +24,11 @@ export function Field({ label, children, className = "" }) {
   );
 }
 
-export function Card({ children, className = "", ...props }) {
+function Card({ children, className = "", ...props }) {
   return <div className={`card p-5 ${className}`} {...props}>{children}</div>;
 }
 
-export function Badge({ status }) {
+function Badge({ status }) {
   const styles = {
     active: "bg-success/10 text-success",
     invited: "bg-brand-100 text-brand-800",
@@ -55,7 +52,7 @@ export function Badge({ status }) {
   );
 }
 
-export function StatCard({ label, value, accent = false }) {
+function StatCard({ label, value, accent = false }) {
   return (
     <div className="card p-4">
       <p className="text-xs font-medium text-ink-500">{label}</p>
@@ -64,7 +61,7 @@ export function StatCard({ label, value, accent = false }) {
   );
 }
 
-export function TabPill({ children, active = false, onClick, count }) {
+function TabPill({ children, active = false, onClick, count }) {
   return (
     <button
       type="button"
@@ -77,10 +74,12 @@ export function TabPill({ children, active = false, onClick, count }) {
   );
 }
 
-export function EmptyState({ children }) {
+function EmptyState({ children }) {
   return (
     <div className="rounded-xl border border-dashed border-line bg-surface-alt px-6 py-10 text-center text-sm text-ink-500">
       {children}
     </div>
   );
 }
+
+export { Badge, Button, Card, EmptyState, Field, StatCard, TabPill };

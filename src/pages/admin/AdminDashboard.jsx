@@ -14,7 +14,8 @@ import {
   confirmPayrollPayment,
 } from "../../lib/services";
 import DashboardShell from "../../components/DashboardShell";
-import { Badge, Button, Card, EmptyState, StatCard, inputClass } from "../../components/ui";
+import { Badge, Button, Card, EmptyState, StatCard } from "../../components/ui";
+import { inputClass } from "../../components/formStyles";
 import AddEmployeeForm from "./AddEmployeeForm";
 import GeneratePayslipForm from "./GeneratePayslipForm";
 import AssignTaskForm from "./AssignTaskForm";
@@ -323,7 +324,7 @@ function AdminDashboard() {
       onTabChange={setTab}
       onLogout={logout}
     >
-      <div className="mb-6 hidden grid-cols-2 gap-3 md:grid md:grid-cols-4">
+      <div className="mb-6 hidden grid-cols-2 gap-3 lg:grid lg:grid-cols-4">
         <StatCard label="Employees" value={employees.length} />
         <StatCard label="Payslips Issued" value={payroll.length} />
         <StatCard label="Pending Leave" value={pendingLeave} accent={pendingLeave > 0} />
@@ -380,7 +381,7 @@ function AdminDashboard() {
             <EmptyState>No employees yet. Add one to get started.</EmptyState>
           ) : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {employees.map((employee) => (
                 <Card key={employee.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -404,7 +405,7 @@ function AdminDashboard() {
                 </Card>
               ))}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -454,7 +455,7 @@ function AdminDashboard() {
           )}
           {payroll.length > 0 && (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {payroll.map((record) => (
                 <Card key={record.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -484,7 +485,7 @@ function AdminDashboard() {
                 </Card>
               ))}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -538,7 +539,7 @@ function AdminDashboard() {
             <EmptyState>No leave requests yet.</EmptyState>
           ) : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {leaveRequests.map((request) => (
                 <Card key={request.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -570,7 +571,7 @@ function AdminDashboard() {
                 </Card>
               ))}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
@@ -642,7 +643,7 @@ function AdminDashboard() {
             <EmptyState>No tasks assigned yet.</EmptyState>
           ) : (
             <>
-            <div className="space-y-3 md:hidden">
+            <div className="space-y-3 lg:hidden">
               {tasks.map((task) => (
                 <Card key={task.id} className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -658,7 +659,7 @@ function AdminDashboard() {
                 </Card>
               ))}
             </div>
-            <Card className="hidden overflow-x-auto p-0 md:block">
+            <Card className="hidden overflow-x-auto p-0 lg:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">

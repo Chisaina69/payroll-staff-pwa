@@ -8,7 +8,7 @@ function parseDateOnly(value) {
     : date;
 }
 
-export function countLeaveWorkingDays(startDate, endDate) {
+function countLeaveWorkingDays(startDate, endDate) {
   const start = parseDateOnly(startDate);
   const end = parseDateOnly(endDate);
   if (!start || !end || start > end) return 0;
@@ -20,5 +20,8 @@ export function countLeaveWorkingDays(startDate, endDate) {
     if (weekday !== 0 && weekday !== 6) workingDays += 1;
     date.setUTCDate(date.getUTCDate() + 1);
   }
+
   return workingDays;
 }
+
+export { countLeaveWorkingDays };
