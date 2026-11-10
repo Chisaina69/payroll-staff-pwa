@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Wallet, CalendarClock, Bell, ListChecks, UserCircle, Users } from "lucide-react";
 import { useAuth } from "../../auth/useAuth";
 import {
@@ -11,17 +11,20 @@ import {
   fetchDirectory,
 } from "../../lib/services";
 import { countLeaveWorkingDays } from "../../lib/leave";
+import { formatCurrency, getPayslipDetails, openPayslipReceipt } from "../../lib/payslipReceipt";
 import { supabase } from "../../lib/supabase";
 import DashboardShell from "../../components/DashboardShell";
 import { Badge, Button, Card, EmptyState, Field, StatCard, inputClass } from "../../components/ui";
 
 const CURRENT_LEAVE_YEAR = new Date().getFullYear();
 
-export default function StaffDashboard() {
+function StaffDashboard() {
   const { logout, profile, employeeId } = useAuth();
 
   const [payslips, setPayslips] = useState([]);
   const [payrollLoadError, setPayrollLoadError] = useState("");
+  const [expandedPayslipId, setExpandedPayslipId] = useState(null);
+  const [receiptError, setReceiptError] = useState("");
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leaveLoadError, setLeaveLoadError] = useState("");
   const [notifications, setNotifications] = useState([]);
@@ -96,6 +99,13 @@ export default function StaffDashboard() {
     }
   }
 
+  function handlePayslipReceipt(record) {
+    setReceiptError("");
+    if (!openPayslipReceipt(record, myRecord)) {
+      setReceiptError("Allow pop-ups for this site to open and save your payslip as a PDF.");
+    }
+  }
+
   const annualLeaveUsed = leaveRequests.reduce((total, request) => {
     if (request.leave_type !== "Annual" || request.status !== "approved") return total;
     const yearStart = `${CURRENT_LEAVE_YEAR}-01-01`;
@@ -109,7 +119,7 @@ export default function StaffDashboard() {
   const annualLeaveExceedsBalance =
     leaveType === "Annual" && requestedLeaveDays > annualLeaveBalance;
 
-  const unreadNotifs = notifications.filter((n) => !n.read).length;
+  const unreadNotifs = notifications.filter((n) => !n.read_at).length;
   const pendingTasks = tasks.filter((t) => t.status === "pending").length;
 
   const navItems = [
@@ -144,25 +154,90 @@ export default function StaffDashboard() {
               Could not load payslips from Supabase: {payrollLoadError}
             </p>
           )}
+          {receiptError && <p role="alert" className="mb-4 text-sm text-danger">{receiptError}</p>}
           {payslips.length === 0 ? <EmptyState>No payslips yet.</EmptyState> : (
             <Card className="overflow-x-auto p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
-                    <th className="px-4 py-3">Period</th><th className="px-4 py-3">Basic Pay</th><th className="px-4 py-3">Allowances</th><th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net Pay</th><th className="px-4 py-3">Payment Status</th>
+                    <th className="px-4 py-3">Period</th><th className="px-4 py-3">Basic Pay</th><th className="px-4 py-3">Allowances</th><th className="px-4 py-3">Deductions</th><th className="px-4 py-3">Net Pay</th><th className="px-4 py-3">Payment Status</th><th className="px-4 py-3">Receipt</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {payslips.map((p) => (
-                    <tr key={p.id} className="border-b border-line last:border-0">
-                      <td className="px-4 py-3">{p.pay_period_start} – {p.pay_period_end}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.basic_pay).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.allowances).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-ink-600">KES {Number(p.deductions).toLocaleString()}</td>
-                      <td className="px-4 py-3 font-semibold text-accent-600">KES {Number(p.net_pay).toLocaleString()}</td>
-                      <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
-                    </tr>
-                  ))}
+                  {payslips.map((p) => {
+                    const details = getPayslipDetails(p);
+                    const expanded = expandedPayslipId === p.id;
+                    return (
+                      <Fragment key={p.id}>
+                        <tr className="border-b border-line last:border-0">
+                          <td className="px-4 py-3">{p.pay_period_start} – {p.pay_period_end}</td>
+                          <td className="px-4 py-3 text-ink-600">{formatCurrency(details.basicPay)}</td>
+                          <td className="px-4 py-3 text-ink-600">{formatCurrency(details.allowances)}</td>
+                          <td className="px-4 py-3 text-ink-600">{formatCurrency(details.deductionTotal)}</td>
+                          <td className="px-4 py-3 font-semibold text-accent-600">{formatCurrency(details.netPay)}</td>
+                          <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
+                          <td className="px-4 py-3">
+                            <Button
+                              variant="secondary"
+                              className="whitespace-nowrap px-3 py-1.5 text-xs"
+                              aria-expanded={expanded}
+                              onClick={() => setExpandedPayslipId(expanded ? null : p.id)}
+                            >
+                              {expanded ? "Hide receipt" : "View receipt"}
+                            </Button>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="border-b border-line bg-surface-alt/50">
+                            <td colSpan={7} className="px-4 py-4">
+                              <div className="mx-auto max-w-2xl rounded-xl border border-line bg-white p-5">
+                                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <h3 className="font-display text-lg font-semibold text-ink-900">Payslip receipt</h3>
+                                    <p className="text-sm text-ink-500">
+                                      {myRecord ? `${myRecord.first_name} ${myRecord.last_name}`.trim() : profile?.display_name}
+                                      {myRecord?.employee_code ? ` · ${myRecord.employee_code}` : ""}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    className="px-3 py-1.5 text-xs"
+                                    onClick={() => handlePayslipReceipt(p)}
+                                  >
+                                    Download / Print PDF
+                                  </Button>
+                                </div>
+                                <p className="mb-3 text-sm text-ink-600">
+                                  Pay period: {p.pay_period_start} – {p.pay_period_end}
+                                </p>
+                                <div className="grid gap-2 text-sm sm:grid-cols-2">
+                                  <p>Basic pay <span className="float-right font-medium">{formatCurrency(details.basicPay)}</span></p>
+                                  <p>Allowances <span className="float-right font-medium">{formatCurrency(details.allowances)}</span></p>
+                                  <p>Gross pay <span className="float-right font-semibold">{formatCurrency(details.gross)}</span></p>
+                                </div>
+                                <h4 className="mb-2 mt-4 font-semibold text-ink-900">Itemized deductions</h4>
+                                <div className="space-y-2 text-sm">
+                                  {details.deductions.map((deduction) => (
+                                    <p key={deduction.label} className="flex justify-between gap-4">
+                                      <span>{deduction.label}</span>
+                                      <span className="font-medium">{formatCurrency(deduction.amount)}</span>
+                                    </p>
+                                  ))}
+                                  <p className="flex justify-between gap-4 border-t border-line pt-2 font-semibold">
+                                    <span>Total deductions</span>
+                                    <span>{formatCurrency(details.deductionTotal)}</span>
+                                  </p>
+                                  <p className="flex justify-between gap-4 text-base font-semibold text-accent-600">
+                                    <span>Net pay</span>
+                                    <span>{formatCurrency(details.netPay)}</span>
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </Card>
@@ -260,8 +335,12 @@ export default function StaffDashboard() {
           {notifications.length === 0 ? <EmptyState>Nothing here yet.</EmptyState> : (
             <div className="space-y-2">
               {notifications.map((n) => (
-                <Card key={n.id} className={`p-4 ${!n.read ? "border-brand-300 bg-brand-50/40" : ""}`}>
+                <Card key={n.id} className={`p-4 ${!n.read_at ? "border-brand-300 bg-brand-50/40" : ""}`}>
+                  {n.title && <p className="font-medium text-ink-900">{n.title}</p>}
                   <p className="text-sm text-ink-900">{n.message}</p>
+                  {n.created_at && (
+                    <p className="mt-1 text-xs text-ink-500">{new Date(n.created_at).toLocaleString()}</p>
+                  )}
                 </Card>
               ))}
             </div>
@@ -334,3 +413,5 @@ export default function StaffDashboard() {
     </DashboardShell>
   );
 }
+
+export default StaffDashboard;

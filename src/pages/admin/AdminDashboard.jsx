@@ -6,6 +6,7 @@ import {
   subscribePayroll,
   subscribeLeaveRequests,
   subscribeTasks,
+  fetchEmployeeInviteStatuses,
   setLeaveRequestStatus,
   sendNotification,
   confirmPayrollPayment,
@@ -17,10 +18,13 @@ import GeneratePayslipForm from "./GeneratePayslipForm";
 import AssignTaskForm from "./AssignTaskForm";
 import { createStaffInvite } from "../../lib/paydayAuth";
 
-export default function AdminDashboard() {
-  const { logout, profile } = useAuth();
+function AdminDashboard() {
+  const { logout, profile, user } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [employeeLoadError, setEmployeeLoadError] = useState("");
+  const [inviteStatuses, setInviteStatuses] = useState({});
+  const [inviteStatusesKey, setInviteStatusesKey] = useState("");
+  const [inviteStatusError, setInviteStatusError] = useState("");
   const [payroll, setPayroll] = useState([]);
   const [payrollLoadError, setPayrollLoadError] = useState("");
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -50,6 +54,44 @@ export default function AdminDashboard() {
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
+
+  const employeeIdsKey = employees.map((employee) => employee.id).join(",");
+
+  useEffect(() => {
+    let active = true;
+    const employeeIds = employeeIdsKey ? employeeIdsKey.split(",") : [];
+
+    async function refreshInviteStatuses() {
+      if (!employeeIds.length) {
+        setInviteStatuses({});
+        setInviteStatusError("");
+        setInviteStatusesKey(employeeIdsKey);
+        return;
+      }
+
+      try {
+        const statuses = await fetchEmployeeInviteStatuses(employeeIds);
+        if (active) {
+          setInviteStatuses(statuses);
+          setInviteStatusError("");
+          setInviteStatusesKey(employeeIdsKey);
+        }
+      } catch (error) {
+        if (active) {
+          console.error("Unable to load employee invite statuses:", error);
+          setInviteStatusError(error.message || "Unable to load invitation status.");
+          setInviteStatusesKey(employeeIdsKey);
+        }
+      }
+    }
+
+    refreshInviteStatuses();
+    const intervalId = window.setInterval(refreshInviteStatuses, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [employeeIdsKey]);
 
   function employeeName(employeeId) {
     const employee = employees.find((e) => e.id === employeeId);
@@ -89,14 +131,28 @@ export default function AdminDashboard() {
     setLeaveDecisionError("");
     setUpdatingLeaveId(request.id);
     try {
-      await setLeaveRequestStatus(request.id, status);
+      const result = await setLeaveRequestStatus(
+        request.id,
+        status,
+        user?.id,
+        request.status,
+      );
+      if (!result.updated) {
+        setLeaveDecisionError(`This request is already ${status}.`);
+        return;
+      }
+
+      setLeaveRequests((current) =>
+        current.map((item) => item.id === result.request.id ? result.request : item)
+      );
       const { error } = await sendNotification(
         request.employee_id,
+        `Leave request ${status}`,
         `Your ${request.leave_type} leave request has been ${status}.`,
       );
       if (error) {
-        console.error("Leave decision saved, but notification failed:", error.message);
-        setLeaveDecisionError(`Request ${status}, but the staff notification could not be sent.`);
+        console.error("Leave decision saved, but staff notification failed:", error.message);
+        setLeaveDecisionError(`Request ${status}, but the staff notification could not be sent: ${error.message}`);
       }
     } catch (error) {
       setLeaveDecisionError(error.message || "Unable to update this leave request.");
@@ -127,6 +183,10 @@ export default function AdminDashboard() {
     try {
       const result = await createStaffInvite(employeeCode);
       setInvite(result);
+      const employee = employees.find((item) => item.employee_code === employeeCode);
+      if (employee) {
+        setInviteStatuses((current) => ({ ...current, [employee.id]: "invited" }));
+      }
     } catch (error) {
       setInviteError(error.message || "Unable to generate a registration code.");
     } finally {
@@ -187,6 +247,11 @@ export default function AdminDashboard() {
             </Card>
           )}
           {inviteError && <p className="mb-4 text-sm text-danger">{inviteError}</p>}
+          {inviteStatusError && (
+            <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load invitation statuses: {inviteStatusError}
+            </p>
+          )}
           {employees.length === 0 ? (
             <EmptyState>No employees yet. Add one to get started.</EmptyState>
           ) : (
@@ -208,13 +273,33 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3 text-ink-600">KES {Number(e.basic_salary).toLocaleString()}</td>
                       <td className="px-4 py-3"><Badge status={e.status} /></td>
                       <td className="px-4 py-3">
-                        <Button
-                          className="whitespace-nowrap px-3 py-1.5 text-xs"
-                          disabled={e.status !== "active" || invitingEmployee !== null}
-                          onClick={() => handleCreateInvite(e.employee_code)}
-                        >
-                          {invitingEmployee === e.employee_code ? "Generating..." : "Create invite"}
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {inviteStatuses[e.id] === "active" ? (
+                            <Badge status="active" />
+                          ) : inviteStatuses[e.id] === "invited" ? (
+                            <>
+                              <Badge status="invited" />
+                              <span className="text-xs text-ink-500">Invite sent</span>
+                            </>
+                          ) : (
+                            <Button
+                              className="whitespace-nowrap px-3 py-1.5 text-xs"
+                              disabled={
+                                e.status !== "active" ||
+                                invitingEmployee !== null ||
+                                inviteStatusesKey !== employeeIdsKey ||
+                                Boolean(inviteStatusError)
+                              }
+                              onClick={() => handleCreateInvite(e.employee_code)}
+                            >
+                              {invitingEmployee === e.employee_code
+                                ? "Generating..."
+                                : inviteStatuses[e.id] === "expired"
+                                  ? "Resend invite"
+                                  : "Create invite"}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -316,14 +401,24 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3 text-ink-600">{r.reason}</td>
                       <td className="px-4 py-3"><Badge status={r.status} /></td>
                       <td className="px-4 py-3">
-                        {r.status === "pending" && (
-                          <div className="flex gap-2">
-                            <Button variant="primary" className="px-3 py-1.5 text-xs" disabled={updatingLeaveId !== null} onClick={() => handleLeaveDecision(r, "approved")}>
-                              {updatingLeaveId === r.id ? "Saving..." : "Approve"}
-                            </Button>
-                            <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={updatingLeaveId !== null} onClick={() => handleLeaveDecision(r, "rejected")}>Reject</Button>
-                          </div>
-                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="primary"
+                            className="px-3 py-1.5 text-xs"
+                            disabled={updatingLeaveId !== null || r.status === "approved"}
+                            onClick={() => handleLeaveDecision(r, "approved")}
+                          >
+                            {updatingLeaveId === r.id ? "Saving..." : r.status === "approved" ? "Approved" : "Approve"}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            className="px-3 py-1.5 text-xs"
+                            disabled={updatingLeaveId !== null || r.status === "rejected"}
+                            onClick={() => handleLeaveDecision(r, "rejected")}
+                          >
+                            {r.status === "rejected" ? "Rejected" : "Reject"}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -371,3 +466,5 @@ export default function AdminDashboard() {
     </DashboardShell>
   );
 }
+
+export default AdminDashboard;

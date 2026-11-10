@@ -118,6 +118,31 @@ export async function fetchDirectory() {
   return data;
 }
 
+export async function fetchEmployeeInviteStatuses(employeeIds) {
+  if (!employeeIds.length) return {};
+
+  const { data, error } = await supabase.functions.invoke("create-staff-invite", {
+    body: {
+      action: "list_statuses",
+      employee_ids: employeeIds,
+    },
+  });
+
+  if (error) {
+    const responseData = error.context instanceof Response
+      ? await error.context.clone().json().catch(() => null)
+      : null;
+    throw new Error(
+      responseData?.error || error.message || "Unable to load employee invite statuses.",
+    );
+  }
+  if (!data?.statuses || typeof data.statuses !== "object") {
+    throw new Error("The invitation status response was invalid.");
+  }
+
+  return data.statuses;
+}
+
 // ---------- Payroll ----------
 
 export function subscribePayroll(onChange, { employeeId } = {}, onError = () => {}) {
@@ -237,6 +262,7 @@ export async function generatePayslip({
     basic_pay: basicPay,
     allowances: allowanceAmount,
     deductions,
+    net_pay: breakdown.net,
     payment_status: "pending",
     created_by: createdBy,
   };
@@ -328,17 +354,43 @@ export async function submitLeaveRequest({ employeeId, type, startDate, endDate,
   }
 }
 
-export async function setLeaveRequestStatus(id, status) {
+export async function setLeaveRequestStatus(id, status, reviewerId, currentStatus) {
   if (!["approved", "rejected"].includes(status)) {
     throw new Error("Choose an approved or rejected status.");
   }
-  const { error } = await supabase.from("leave_requests")
-    .update({ status })
+  if (!reviewerId) throw new Error("Unable to identify the administrator. Sign in again.");
+  if (!["pending", "approved", "rejected"].includes(currentStatus)) {
+    throw new Error("The current leave request status is invalid. Refresh and try again.");
+  }
+  if (status === currentStatus) {
+    return { request: null, updated: false };
+  }
+
+  const { data: updatedRequest, error } = await supabase.from("leave_requests")
+    .update({
+      status,
+      reviewed_by: reviewerId,
+      reviewed_at: new Date().toISOString(),
+    })
     .eq("id", id)
-    .eq("status", "pending")
-    .select("id")
-    .single();
+    .eq("status", currentStatus)
+    .select("*")
+    .maybeSingle();
   if (error) throw error;
+
+  if (updatedRequest) return { request: updatedRequest, updated: true };
+
+  const { data: latestRequest, error: lookupError } = await supabase
+    .from("leave_requests")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (!latestRequest) throw new Error("This leave request could not be found.");
+  if (latestRequest.status === status) {
+    return { request: latestRequest, updated: false };
+  }
+  throw new Error("This request changed while you were reviewing it. Refresh and try again.");
 }
 
 // Flushes any leave requests queued while offline. Registered to run on
@@ -355,31 +407,36 @@ export async function flushPendingWrites() {
 
 // ---------- Notifications ----------
 
-export function subscribeNotifications(recipientId, onChange) {
+export function subscribeNotifications(employeeId, onChange) {
   async function fetchAndNotify() {
     const { data, error } = await supabase
       .from("notifications")
       .select("*")
-      .eq("recipient_id", recipientId)
+      .eq("employee_id", employeeId)
       .order("created_at", { ascending: false });
     if (!error) {
       await localDb.notifications.bulkPut(data);
       onChange(data);
     } else {
       const all = await localDb.notifications.toArray();
-      onChange(all.filter((n) => n.recipient_id === recipientId));
+      onChange(all.filter((n) => n.employee_id === employeeId));
     }
   }
   fetchAndNotify();
   const channel = supabase
-    .channel(`notif-changes-${recipientId}`)
+    .channel(`notif-changes-${employeeId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, fetchAndNotify)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-export function sendNotification(recipientId, message) {
-  return supabase.from("notifications").insert({ recipient_id: recipientId, message });
+export function sendNotification(employeeId, title, message) {
+  return supabase.from("notifications").insert({
+    employee_id: employeeId,
+    title,
+    message,
+    type: "leave",
+  });
 }
 
 // ---------- Tasks ----------

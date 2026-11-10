@@ -34,6 +34,7 @@ export function Card({ children, className = "" }) {
 export function Badge({ status }) {
   const styles = {
     active: "bg-success/10 text-success",
+    invited: "bg-brand-100 text-brand-800",
     approved: "bg-success/10 text-success",
     completed: "bg-success/10 text-success",
     paid: "bg-success/10 text-success",

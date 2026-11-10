@@ -49,3 +49,7 @@ localDb.version(6).stores({
 localDb.version(7).stores({
   leaveRequests: "id, employee_id, status, created_at",
 });
+
+localDb.version(8).stores({
+  notifications: "id, employee_id, read_at, created_at",
+});

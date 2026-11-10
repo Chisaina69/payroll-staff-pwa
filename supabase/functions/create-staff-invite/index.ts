@@ -7,6 +7,47 @@ import {
   respond,
 } from "../_shared/payday.ts";
 
+async function getInviteStatuses(employeeIds: string[]) {
+  const statuses: Record<string, "not_invited" | "active" | "invited" | "expired"> =
+    Object.fromEntries(employeeIds.map((id) => [id, "not_invited"]));
+
+  const [profilesResult, invitesResult] = await Promise.all([
+    adminClient
+      .from("profiles")
+      .select("employee_id")
+      .in("employee_id", employeeIds),
+    adminClient
+      .from("staff_invite_codes")
+      .select("employee_id, expires_at, created_at")
+      .in("employee_id", employeeIds)
+      .is("used_at", null)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (profilesResult.error) {
+    console.error("Failed to load staff profiles for invite statuses:", profilesResult.error);
+    throw new Error("Unable to load invitation statuses");
+  }
+  if (invitesResult.error) {
+    console.error("Failed to load staff invite statuses:", invitesResult.error);
+    throw new Error("Unable to load invitation statuses");
+  }
+
+  for (const profile of profilesResult.data || []) {
+    if (profile.employee_id) statuses[profile.employee_id] = "active";
+  }
+
+  const now = Date.now();
+  for (const invite of invitesResult.data || []) {
+    if (statuses[invite.employee_id] !== "not_invited") continue;
+    statuses[invite.employee_id] = new Date(invite.expires_at).getTime() > now
+      ? "invited"
+      : "expired";
+  }
+
+  return statuses;
+}
+
 Deno.serve(async (req: Request) => {
   const headers = getCorsHeaders(req);
 
@@ -37,7 +78,29 @@ Deno.serve(async (req: Request) => {
       return respond(headers, { error: "Invalid request" }, 400);
     }
 
-    if (!body || typeof body !== "object" || !("employee_code" in body)) {
+    if (!body || typeof body !== "object") {
+      return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    if ("action" in body && body.action === "list_statuses") {
+      if (
+        !("employee_ids" in body) ||
+        !Array.isArray(body.employee_ids) ||
+        body.employee_ids.length > 500 ||
+        body.employee_ids.some((id) =>
+          typeof id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+            .test(id)
+        )
+      ) {
+        return respond(headers, { error: "Invalid employee ID list" }, 400);
+      }
+
+      const statuses = await getInviteStatuses(body.employee_ids);
+      return respond(headers, { statuses });
+    }
+
+    if (!("employee_code" in body)) {
       return respond(headers, { error: "Invalid request" }, 400);
     }
 
