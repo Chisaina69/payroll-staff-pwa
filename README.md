@@ -14,6 +14,8 @@ npm run dev
 
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` using Supabase Dashboard → Project Settings → API, then restart Vite. The URL must be the full project URL, for example `https://<project-ref>.supabase.co`; replace the example values in `.env.example` with your own project's values. These are public client values; never put a Supabase `service_role` key in a `VITE_*` variable or commit it to the repository.
 
+The app is installable as a PWA on supported browsers, including Android Chrome and desktop Chromium browsers on Linux. Open the deployed HTTPS site and choose **Install app** or **Add to Home screen** from the browser menu. On Render, set the two `VITE_*` values as build environment variables and redeploy. The root `render.yaml` configures the static publish directory and SPA route fallback so direct links such as `/login` load the app.
+
 ## Supabase setup
 
 1. Create a Supabase project and enable email/password authentication.
