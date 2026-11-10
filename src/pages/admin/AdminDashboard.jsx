@@ -1,18 +1,20 @@
 import { useEffect, useState } from "react";
-import { Users, Wallet, CalendarClock, ListChecks, Plus } from "lucide-react";
+import { Users, Wallet, CalendarClock, ListChecks, Plus, Bell } from "lucide-react";
 import { useAuth } from "../../auth/useAuth";
 import {
   subscribeEmployees,
   subscribePayroll,
   subscribeLeaveRequests,
   subscribeTasks,
+  subscribeAdminPasswordResetRequests,
   fetchEmployeeInviteStatuses,
   setLeaveRequestStatus,
   sendNotification,
+  markPasswordResetRequestRead,
   confirmPayrollPayment,
 } from "../../lib/services";
 import DashboardShell from "../../components/DashboardShell";
-import { Badge, Button, Card, EmptyState, StatCard } from "../../components/ui";
+import { Badge, Button, Card, EmptyState, StatCard, inputClass } from "../../components/ui";
 import AddEmployeeForm from "./AddEmployeeForm";
 import GeneratePayslipForm from "./GeneratePayslipForm";
 import AssignTaskForm from "./AssignTaskForm";
@@ -31,11 +33,17 @@ function AdminDashboard() {
   const [leaveDecisionError, setLeaveDecisionError] = useState("");
   const [updatingLeaveId, setUpdatingLeaveId] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [tasksLoadError, setTasksLoadError] = useState("");
+  const [passwordResetRequests, setPasswordResetRequests] = useState([]);
+  const [adminNotificationsError, setAdminNotificationsError] = useState("");
+  const [markingAdminNotificationId, setMarkingAdminNotificationId] = useState(null);
+  const [adminNotificationError, setAdminNotificationError] = useState("");
   const [tab, setTab] = useState("employees");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [showGeneratePayslip, setShowGeneratePayslip] = useState(false);
   const [showAssignTask, setShowAssignTask] = useState(false);
   const [invite, setInvite] = useState(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [invitingEmployee, setInvitingEmployee] = useState(null);
   const [paymentError, setPaymentError] = useState("");
@@ -50,7 +58,12 @@ function AdminDashboard() {
         setPayrollLoadError(error?.message || "");
       }),
       subscribeLeaveRequests(setLeaveRequests),
-      subscribeTasks(setTasks),
+      subscribeTasks(setTasks, {}, (error) => {
+        setTasksLoadError(error?.message || "");
+      }),
+      subscribeAdminPasswordResetRequests(setPasswordResetRequests, (error) => {
+        setAdminNotificationsError(error?.message || "");
+      }),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
@@ -127,6 +140,15 @@ function AdminDashboard() {
     setShowGeneratePayslip(false);
   }
 
+  function handleTaskAssigned(task) {
+    setTasks((current) => [
+      task,
+      ...current.filter((item) => item.id !== task.id),
+    ].sort((a, b) => (a.due_date || "").localeCompare(b.due_date || "")));
+    setTasksLoadError("");
+    setShowAssignTask(false);
+  }
+
   async function handleLeaveDecision(request, status) {
     setLeaveDecisionError("");
     setUpdatingLeaveId(request.id);
@@ -176,15 +198,44 @@ function AdminDashboard() {
     }
   }
 
-  async function handleCreateInvite(employeeCode) {
+  async function handlePasswordResetRequestRead(request) {
+    setAdminNotificationError("");
+    setMarkingAdminNotificationId(request.id);
+    try {
+      const readAt = await markPasswordResetRequestRead(request.id);
+      setPasswordResetRequests((current) => current.map((item) =>
+        item.id === request.id
+          ? { ...item, read_at: item.read_at || readAt }
+          : item
+      ));
+    } catch (error) {
+      setAdminNotificationError(error.message || "Unable to mark this notification as read.");
+    } finally {
+      setMarkingAdminNotificationId(null);
+    }
+  }
+
+  async function handleCreateInvite(employeeCode, purpose = "activation") {
     setInvite(null);
+    setInviteCopied(false);
     setInviteError("");
     setInvitingEmployee(employeeCode);
     try {
-      const result = await createStaffInvite(employeeCode);
-      setInvite(result);
+      const result = await createStaffInvite(employeeCode, purpose);
+      const inviteHash = new URLSearchParams({
+        employee_code: result.employee_code,
+        registration_code: result.registration_code,
+      });
+      const invitePath = purpose === "password_reset"
+        ? "/signup?mode=reset"
+        : "/signup";
+      setInvite({
+        ...result,
+        purpose,
+        inviteLink: `${window.location.origin}${invitePath}#${inviteHash.toString()}`,
+      });
       const employee = employees.find((item) => item.employee_code === employeeCode);
-      if (employee) {
+      if (employee && purpose === "activation") {
         setInviteStatuses((current) => ({ ...current, [employee.id]: "invited" }));
       }
     } catch (error) {
@@ -194,14 +245,30 @@ function AdminDashboard() {
     }
   }
 
+  async function handleCopyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(invite.inviteLink);
+      setInviteCopied(true);
+    } catch (error) {
+      console.error("Unable to copy invite link:", error);
+      setInviteError("Unable to copy the invite link. Select and copy the link manually.");
+    }
+  }
+
   const pendingLeave = leaveRequests.filter((r) => r.status === "pending").length;
-  const pendingTasks = tasks.filter((t) => t.status === "pending").length;
+  const pendingTasks = tasks.filter((task) =>
+    (task.progress_status || task.status) !== "completed"
+  ).length;
+  const unreadPasswordResetRequests = passwordResetRequests.filter((request) =>
+    !request.read_at
+  ).length;
 
   const navItems = [
     { key: "employees", label: "Employees", icon: Users, count: employees.length },
     { key: "payroll", label: "Payroll", icon: Wallet, count: payroll.length },
     { key: "leave", label: "Leave Requests", icon: CalendarClock, count: pendingLeave },
     { key: "tasks", label: "Tasks", icon: ListChecks, count: pendingTasks },
+    { key: "notifications", label: "Notifications", icon: Bell, count: unreadPasswordResetRequests },
   ];
 
   return (
@@ -227,7 +294,12 @@ function AdminDashboard() {
               <Button onClick={() => setShowAddEmployee(true)}><Plus size={15} /> Add Employee</Button>
             )}
           </div>
-          {showAddEmployee && <AddEmployeeForm onDone={handleEmployeeAdded} />}
+          {showAddEmployee && (
+            <AddEmployeeForm
+              onDone={handleEmployeeAdded}
+              onCancel={() => setShowAddEmployee(false)}
+            />
+          )}
           {employeeLoadError && (
             <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               Could not refresh the employee list from Supabase: {employeeLoadError}
@@ -236,14 +308,22 @@ function AdminDashboard() {
           {invite && (
             <Card className="mb-5 border-brand-300">
               <p className="font-semibold text-ink-900">
-                Registration code for employee {invite.employee_code}
+                {invite.purpose === "password_reset" ? "Password reset invite" : "Registration invite"} for employee {invite.employee_code}
               </p>
-              <p className="my-2 break-all rounded-lg bg-surface-alt p-3 font-mono text-sm">
-                {invite.registration_code}
+              <p className="my-2 text-sm text-ink-600">
+                Share this one-time link securely with the employee. It expires {new Date(invite.expires_at).toLocaleString()}.
               </p>
-              <p className="text-sm text-ink-500">
-                Expires {new Date(invite.expires_at).toLocaleString()}. Share it securely with the employee.
-              </p>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  className={`${inputClass} min-w-0 flex-1`}
+                  value={invite.inviteLink}
+                  readOnly
+                  aria-label="One-time staff invite link"
+                />
+                <Button type="button" onClick={handleCopyInviteLink}>
+                  {inviteCopied ? "Copied" : "Copy invite link"}
+                </Button>
+              </div>
             </Card>
           )}
           {inviteError && <p className="mb-4 text-sm text-danger">{inviteError}</p>}
@@ -275,7 +355,19 @@ function AdminDashboard() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
                           {inviteStatuses[e.id] === "active" ? (
-                            <Badge status="active" />
+                            <>
+                              <Badge status="active" />
+                              <Button
+                                variant="secondary"
+                                className="whitespace-nowrap px-3 py-1.5 text-xs"
+                                disabled={invitingEmployee !== null}
+                                onClick={() => handleCreateInvite(e.employee_code, "password_reset")}
+                              >
+                                {invitingEmployee === e.employee_code
+                                  ? "Generating..."
+                                  : "Password reset invite"}
+                              </Button>
+                            </>
                           ) : inviteStatuses[e.id] === "invited" ? (
                             <>
                               <Badge status="invited" />
@@ -437,7 +529,19 @@ function AdminDashboard() {
               <Button onClick={() => setShowAssignTask(true)}><Plus size={15} /> Assign Task</Button>
             )}
           </div>
-          {showAssignTask && <AssignTaskForm employees={employees} onDone={() => setShowAssignTask(false)} />}
+          {showAssignTask && (
+            <AssignTaskForm
+              employees={employees}
+              onDone={handleTaskAssigned}
+              onCancel={() => setShowAssignTask(false)}
+            />
+          )}
+          {employees.length === 0 && <EmptyState>Add an employee before assigning a task.</EmptyState>}
+          {tasksLoadError && (
+            <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load tasks from Supabase: {tasksLoadError}
+            </p>
+          )}
           {tasks.length === 0 ? (
             <EmptyState>No tasks assigned yet.</EmptyState>
           ) : (
@@ -445,21 +549,70 @@ function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
-                    <th className="px-4 py-3">Title</th><th className="px-4 py-3">Assigned To</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Task</th><th className="px-4 py-3">Assigned To</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Progress</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tasks.map((t) => (
                     <tr key={t.id} className="border-b border-line last:border-0 hover:bg-surface-alt/60">
-                      <td className="px-4 py-3 font-medium text-ink-900">{t.title}</td>
-                      <td className="px-4 py-3 text-ink-600">{employeeName(t.assigned_to)}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-ink-900">{t.title}</p>
+                        <p className="mt-1 max-w-md whitespace-pre-wrap text-xs text-ink-500">{t.description}</p>
+                      </td>
+                      <td className="px-4 py-3 text-ink-600">{employeeName(t.employee_id || t.assigned_to)}</td>
+                      <td className="px-4 py-3"><Badge status={t.priority || "medium"} /></td>
                       <td className="px-4 py-3 text-ink-600">{t.due_date}</td>
-                      <td className="px-4 py-3"><Badge status={t.status} /></td>
+                      <td className="px-4 py-3"><Badge status={t.progress_status || t.status} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </Card>
+          )}
+        </section>
+      )}
+
+      {tab === "notifications" && (
+        <section>
+          <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Notifications</h2>
+          {adminNotificationsError && (
+            <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load password-reset requests from Supabase: {adminNotificationsError}
+            </p>
+          )}
+          {adminNotificationError && (
+            <p role="alert" className="mb-4 text-sm text-danger">{adminNotificationError}</p>
+          )}
+          {passwordResetRequests.length === 0 ? (
+            <EmptyState>No password-reset requests.</EmptyState>
+          ) : (
+            <div className="space-y-3">
+              {passwordResetRequests.map((request) => (
+                <Card key={request.id} className={request.read_at ? "opacity-75" : "border-brand-300"}>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <p className="font-semibold text-ink-900">Password reset requested</p>
+                      <p className="mt-1 text-sm text-ink-600">
+                        {employeeName(request.employee_id)} needs a password-reset invite.
+                      </p>
+                      <p className="mt-2 text-xs text-ink-500">
+                        {new Date(request.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {!request.read_at && (
+                      <Button
+                        variant="secondary"
+                        className="shrink-0 px-3 py-1.5 text-xs"
+                        disabled={markingAdminNotificationId !== null}
+                        onClick={() => handlePasswordResetRequestRead(request)}
+                      >
+                        {markingAdminNotificationId === request.id ? "Saving..." : "Mark read"}
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
           )}
         </section>
       )}

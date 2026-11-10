@@ -60,12 +60,13 @@ export async function activateStaffAccount(
   return data;
 }
 
-export async function createStaffInvite(employeeCode) {
+export async function createStaffInvite(employeeCode, purpose = "activation") {
   const { data, error } = await supabase.functions.invoke(
     "create-staff-invite",
     {
       body: {
         employee_code: employeeCode.trim(),
+        purpose,
       },
     },
   );
@@ -83,6 +84,32 @@ export async function createStaffInvite(employeeCode) {
 
   if (!data?.registration_code) {
     throw new Error("The registration code was not returned.");
+  }
+
+  return data;
+}
+
+export async function requestStaffPasswordReset(employeeCode) {
+  const { data, error } = await supabase.functions.invoke("create-staff-invite", {
+    body: {
+      action: "request_password_reset",
+      employee_code: employeeCode.trim(),
+    },
+  });
+
+  if (error) {
+    let message = data?.error;
+    if (!message && error.context instanceof Response) {
+      const response = error.context;
+      const responseData = await response.clone().json().catch(() => null);
+      message = responseData?.error ||
+        `Unable to send a password-reset request (HTTP ${response.status}).`;
+    }
+    throw new Error(message || error.message || "Unable to send a password-reset request.");
+  }
+
+  if (!data?.message) {
+    throw new Error("The password-reset request response was invalid.");
   }
 
   return data;

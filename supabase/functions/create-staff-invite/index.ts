@@ -64,12 +64,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const auth = await requireAdmin(req);
-
-    if (auth.error) {
-      return respond(headers, { error: auth.error }, 403);
-    }
-
     let body: unknown;
 
     try {
@@ -78,8 +72,87 @@ Deno.serve(async (req: Request) => {
       return respond(headers, { error: "Invalid request" }, 400);
     }
 
-    if (!body || typeof body !== "object") {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
       return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    if ("action" in body && body.action === "request_password_reset") {
+      const rawEmployeeCode = "employee_code" in body ? body.employee_code : null;
+      if (
+        typeof rawEmployeeCode !== "string" ||
+        !rawEmployeeCode.trim() ||
+        rawEmployeeCode.trim().length > 50
+      ) {
+        return respond(headers, { error: "Enter a valid employee ID." }, 400);
+      }
+
+      const employeeCode = rawEmployeeCode.trim();
+      const genericResponse = {
+        message: "If an active staff account matches that employee ID, the administrator has been notified.",
+      };
+      const { data: employee, error: employeeError } = await adminClient
+        .from("employees")
+        .select("id, employee_code, first_name, last_name, status")
+        .eq("employee_code", employeeCode)
+        .maybeSingle();
+
+      if (employeeError) {
+        console.error("Failed to load employee for password-reset request:", employeeError);
+        return respond(headers, { error: "Unable to send your request. Try again later." }, 500);
+      }
+      if (!employee || employee.status !== "active") {
+        return respond(headers, genericResponse);
+      }
+
+      const { data: staffProfile, error: profileError } = await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("employee_id", employee.id)
+        .eq("role", "staff")
+        .maybeSingle();
+
+      if (profileError) {
+        console.error("Failed to verify staff account for password-reset request:", profileError);
+        return respond(headers, { error: "Unable to send your request. Try again later." }, 500);
+      }
+      if (!staffProfile) {
+        return respond(headers, genericResponse);
+      }
+
+      const recentRequestAfter = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: recentRequest, error: recentRequestError } = await adminClient
+        .from("password_reset_requests")
+        .select("id")
+        .eq("employee_id", employee.id)
+        .gte("created_at", recentRequestAfter)
+        .limit(1)
+        .maybeSingle();
+
+      if (recentRequestError) {
+        console.error("Failed to check recent password-reset requests:", recentRequestError);
+        return respond(headers, { error: "Unable to send your request. Try again later." }, 500);
+      }
+
+      if (!recentRequest) {
+        const { error: notificationError } = await adminClient
+          .from("password_reset_requests")
+          .insert({
+            employee_id: employee.id,
+          });
+
+        if (notificationError) {
+          console.error("Failed to store password-reset request:", notificationError);
+          return respond(headers, { error: "Unable to send your request. Try again later." }, 500);
+        }
+      }
+
+      return respond(headers, genericResponse);
+    }
+
+    const auth = await requireAdmin(req);
+
+    if (auth.error) {
+      return respond(headers, { error: auth.error }, 403);
     }
 
     if ("action" in body && body.action === "list_statuses") {
@@ -102,6 +175,11 @@ Deno.serve(async (req: Request) => {
 
     if (!("employee_code" in body)) {
       return respond(headers, { error: "Invalid request" }, 400);
+    }
+
+    const purpose = "purpose" in body ? body.purpose : "activation";
+    if (purpose !== "activation" && purpose !== "password_reset") {
+      return respond(headers, { error: "Invalid invite purpose" }, 400);
     }
 
     const rawEmployeeCode = body.employee_code;
@@ -157,10 +235,17 @@ Deno.serve(async (req: Request) => {
       return respond(headers, { error: "Unable to process request" }, 500);
     }
 
-    if (existingProfile) {
+    if (purpose === "activation" && existingProfile) {
       return respond(
         headers,
         { error: "Employee already has an account" },
+        409,
+      );
+    }
+    if (purpose === "password_reset" && !existingProfile) {
+      return respond(
+        headers,
+        { error: "Employee does not have an account to reset" },
         409,
       );
     }
@@ -197,7 +282,9 @@ Deno.serve(async (req: Request) => {
 
     await adminClient.from("audit_logs").insert({
       actor_id: auth.userId,
-      action: "staff_invite_created",
+      action: purpose === "password_reset"
+        ? "staff_password_reset_invite_created"
+        : "staff_invite_created",
       entity_type: "employee",
       entity_id: employee.id,
     });

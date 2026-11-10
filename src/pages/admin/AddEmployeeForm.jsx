@@ -2,7 +2,7 @@ import { useState } from "react";
 import { addEmployee } from "../../lib/services";
 import { Button, Card, Field, inputClass } from "../../components/ui";
 
-export default function AddEmployeeForm({ onDone }) {
+function AddEmployeeForm({ onDone, onCancel }) {
   const [values, setValues] = useState({
     employeeId: "",
     name: "",
@@ -60,9 +60,11 @@ export default function AddEmployeeForm({ onDone }) {
         {error && <p className="text-sm text-danger sm:col-span-2">{error}</p>}
         <div className="flex gap-2 sm:col-span-2">
           <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Employee"}</Button>
-          <Button variant="secondary" onClick={onDone}>Cancel</Button>
+          <Button variant="secondary" onClick={onCancel} disabled={saving}>Cancel</Button>
         </div>
       </form>
     </Card>
   );
 }
+
+export default AddEmployeeForm;

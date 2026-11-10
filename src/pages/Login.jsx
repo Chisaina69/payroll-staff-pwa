@@ -1,16 +1,24 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../auth/useAuth";
 import { Button, Field, inputClass } from "../components/ui";
+import { requestStaffPasswordReset } from "../lib/paydayAuth";
 
-export default function Login() {
+function Login() {
   const { login } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showResetRequest, setShowResetRequest] = useState(false);
+  const [resetEmployeeCode, setResetEmployeeCode] = useState("");
+  const [resetRequestError, setResetRequestError] = useState("");
+  const [resetRequestMessage, setResetRequestMessage] = useState("");
+  const [submittingResetRequest, setSubmittingResetRequest] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -23,6 +31,26 @@ export default function Login() {
       setError(loginError.message || "Login failed. Check your details and try again.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleResetRequest() {
+    setResetRequestError("");
+    setResetRequestMessage("");
+    if (!resetEmployeeCode.trim()) {
+      setResetRequestError("Enter your employee ID.");
+      return;
+    }
+
+    setSubmittingResetRequest(true);
+    try {
+      const result = await requestStaffPasswordReset(resetEmployeeCode);
+      setResetRequestMessage(result.message);
+      setResetEmployeeCode("");
+    } catch (requestError) {
+      setResetRequestError(requestError.message || "Unable to send your password-reset request.");
+    } finally {
+      setSubmittingResetRequest(false);
     }
   }
 
@@ -48,6 +76,11 @@ export default function Login() {
             Your account is ready. Sign in with your employee ID and password.
           </p>
         )}
+        {location.state?.passwordReset && (
+          <p className="mb-4 text-sm text-success">
+            Your password was reset. Sign in with your employee ID and new password.
+          </p>
+        )}
 
         <div className="space-y-4">
           <Field label="Email or Employee ID">
@@ -60,14 +93,26 @@ export default function Login() {
             />
           </Field>
           <Field label="Password">
-            <input
-              type="password"
-              className={inputClass}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                className={`${inputClass} pr-12`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 inline-flex items-center px-3 text-ink-500 hover:text-ink-900"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </Field>
         </div>
 
@@ -76,6 +121,62 @@ export default function Login() {
         <Button type="submit" disabled={busy} className="mt-6 w-full">
           {busy ? "Signing in..." : "Sign In"}
         </Button>
+
+        <p className="mt-4 text-center text-sm text-ink-500">
+          Forgot your password? Ask your administrator for a secure password-reset invite.
+        </p>
+        {!showResetRequest ? (
+          <button
+            type="button"
+            className="mt-2 w-full text-center text-sm font-semibold text-brand-700 hover:underline"
+            onClick={() => setShowResetRequest(true)}
+          >
+            Request a password reset
+          </button>
+        ) : (
+          <div className="mt-4 space-y-3 rounded-xl border border-line bg-surface-alt p-4">
+            <p className="text-sm text-ink-600">
+              Enter your employee ID to notify your administrator.
+            </p>
+            <Field label="Employee ID">
+              <input
+                className={inputClass}
+                value={resetEmployeeCode}
+                onChange={(event) => setResetEmployeeCode(event.target.value)}
+                autoComplete="username"
+                required
+                maxLength={50}
+              />
+            </Field>
+            {resetRequestError && (
+              <p role="alert" className="text-sm text-danger">{resetRequestError}</p>
+            )}
+            {resetRequestMessage && (
+              <p role="status" className="text-sm text-success">{resetRequestMessage}</p>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" className="flex-1" disabled={submittingResetRequest} onClick={handleResetRequest}>
+                {submittingResetRequest ? "Sending..." : "Send request"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowResetRequest(false);
+                  setResetRequestError("");
+                  setResetRequestMessage("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+        <p className="mt-2 text-center text-sm">
+          <Link to="/signup?mode=reset" className="font-semibold text-brand-700 hover:underline">
+            I have a password-reset invite
+          </Link>
+        </p>
 
         <p className="mt-5 text-center text-sm text-ink-500">
           Staff member, first time here?{" "}
@@ -87,3 +188,5 @@ export default function Login() {
     </div>
   );
 }
+
+export default Login;

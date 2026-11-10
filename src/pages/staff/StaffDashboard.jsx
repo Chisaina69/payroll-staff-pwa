@@ -7,7 +7,8 @@ import {
   subscribeNotifications,
   subscribeTasks,
   submitLeaveRequest,
-  completeTask,
+  markNotificationRead,
+  updateTaskProgress,
   fetchDirectory,
 } from "../../lib/services";
 import { countLeaveWorkingDays } from "../../lib/leave";
@@ -28,7 +29,12 @@ function StaffDashboard() {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leaveLoadError, setLeaveLoadError] = useState("");
   const [notifications, setNotifications] = useState([]);
+  const [notificationReadError, setNotificationReadError] = useState("");
+  const [markingNotificationId, setMarkingNotificationId] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [tasksLoadError, setTasksLoadError] = useState("");
+  const [taskProgressError, setTaskProgressError] = useState("");
+  const [updatingTaskId, setUpdatingTaskId] = useState(null);
   const [directory, setDirectory] = useState([]);
   const [myRecord, setMyRecord] = useState(null);
   const [tab, setTab] = useState("payslips");
@@ -51,7 +57,9 @@ function StaffDashboard() {
         setLeaveLoadError(error?.message || "");
       }),
       subscribeNotifications(employeeId, setNotifications),
-      subscribeTasks(setTasks, { employeeId }),
+      subscribeTasks(setTasks, { employeeId }, (error) => {
+        setTasksLoadError(error?.message || "");
+      }),
     ];
     supabase.from("employees").select("*").eq("id", employeeId).single()
       .then(({ data, error }) => {
@@ -106,21 +114,75 @@ function StaffDashboard() {
     }
   }
 
-  const annualLeaveUsed = leaveRequests.reduce((total, request) => {
-    if (request.leave_type !== "Annual" || request.status !== "approved") return total;
+  async function handleNotificationOpen(notification) {
+    if (notification.read_at || markingNotificationId) return;
+
+    setNotificationReadError("");
+    setMarkingNotificationId(notification.id);
+    setNotifications((current) =>
+      current.map((item) =>
+        item.id === notification.id
+          ? { ...item, read_at: new Date().toISOString() }
+          : item
+      )
+    );
+
+    try {
+      await markNotificationRead(notification.id, employeeId);
+    } catch (error) {
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read_at: null } : item
+        )
+      );
+      setNotificationReadError(error.message || "Unable to mark this notification as read.");
+    } finally {
+      setMarkingNotificationId(null);
+    }
+  }
+
+  async function handleTaskProgress(task, status) {
+    setTaskProgressError("");
+    setUpdatingTaskId(task.id);
+    try {
+      await updateTaskProgress(task.id, status);
+      setTasks((current) => current.map((item) =>
+        item.id === task.id
+          ? {
+            ...item,
+            progress_status: status,
+            ...(status === "completed"
+              ? { status: "completed" }
+              : {}),
+          }
+          : item
+      ));
+    } catch (error) {
+      setTaskProgressError(error.message || "Unable to update task progress.");
+    } finally {
+      setUpdatingTaskId(null);
+    }
+  }
+
+  const paidLeaveUsed = leaveRequests.reduce((total, request) => {
+    if (!["Annual", "Sick"].includes(request.leave_type) || request.status !== "approved") {
+      return total;
+    }
     const yearStart = `${CURRENT_LEAVE_YEAR}-01-01`;
     const yearEnd = `${CURRENT_LEAVE_YEAR}-12-31`;
     const startDateInYear = request.start_date < yearStart ? yearStart : request.start_date;
     const endDateInYear = request.end_date > yearEnd ? yearEnd : request.end_date;
     return total + countLeaveWorkingDays(startDateInYear, endDateInYear);
   }, 0);
-  const annualLeaveBalance = Math.max(0, 21 - annualLeaveUsed);
+  const paidLeaveBalance = Math.max(0, 21 - paidLeaveUsed);
   const requestedLeaveDays = countLeaveWorkingDays(startDate, endDate);
-  const annualLeaveExceedsBalance =
-    leaveType === "Annual" && requestedLeaveDays > annualLeaveBalance;
+  const paidLeaveExceedsBalance =
+    leaveType !== "Unpaid" && requestedLeaveDays > paidLeaveBalance;
 
   const unreadNotifs = notifications.filter((n) => !n.read_at).length;
-  const pendingTasks = tasks.filter((t) => t.status === "pending").length;
+  const pendingTasks = tasks.filter((task) =>
+    (task.progress_status || task.status) !== "completed"
+  ).length;
 
   const navItems = [
     { key: "payslips", label: "Payslips", icon: Wallet },
@@ -140,7 +202,7 @@ function StaffDashboard() {
       onLogout={logout}
     >
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Leave Balance" value={`${annualLeaveBalance} working days`} accent />
+        <StatCard label="Annual & Sick Balance" value={`${paidLeaveBalance} working days`} accent />
         <StatCard label="Payslips" value={payslips.length} />
         <StatCard label="Open Tasks" value={pendingTasks} accent={pendingTasks > 0} />
         <StatCard label="Unread" value={unreadNotifs} accent={unreadNotifs > 0} />
@@ -250,7 +312,7 @@ function StaffDashboard() {
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Leave</h2>
           <Card className="mb-6">
             <p className="mb-3 text-sm text-ink-500">
-              Annual leave balance: <span className="font-semibold text-accent-600">{annualLeaveBalance} working days</span> remaining this year.
+              Annual and sick leave balance: <span className="font-semibold text-accent-600">{paidLeaveBalance} working days</span> remaining this year. Unpaid leave does not use this balance.
             </p>
             <form onSubmit={handleLeaveSubmit} className="flex flex-wrap items-end gap-3">
               <Field label="Type">
@@ -272,7 +334,7 @@ function StaffDashboard() {
                   required
                 />
               </Field>
-              <Button type="submit" disabled={submittingLeave || requestedLeaveDays === 0 || annualLeaveExceedsBalance}>
+              <Button type="submit" disabled={submittingLeave || requestedLeaveDays === 0 || paidLeaveExceedsBalance}>
                 {submittingLeave ? "Submitting..." : "Submit request"}
               </Button>
             </form>
@@ -287,9 +349,9 @@ function StaffDashboard() {
                 Choose an end date on or after the start date and include at least one weekday.
               </p>
             )}
-            {annualLeaveExceedsBalance && (
+            {paidLeaveExceedsBalance && (
               <p role="alert" className="mt-3 text-sm text-danger">
-                This request exceeds your remaining annual leave balance of {annualLeaveBalance} working days.
+                This request exceeds your remaining Annual and Sick leave balance of {paidLeaveBalance} working days.
               </p>
             )}
             {leaveError && <p role="alert" className="mt-3 text-sm text-danger">{leaveError}</p>}
@@ -332,15 +394,40 @@ function StaffDashboard() {
       {tab === "notifications" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Notifications</h2>
+          {notificationReadError && (
+            <p role="alert" className="mb-4 text-sm text-danger">{notificationReadError}</p>
+          )}
           {notifications.length === 0 ? <EmptyState>Nothing here yet.</EmptyState> : (
             <div className="space-y-2">
               {notifications.map((n) => (
-                <Card key={n.id} className={`p-4 ${!n.read_at ? "border-brand-300 bg-brand-50/40" : ""}`}>
-                  {n.title && <p className="font-medium text-ink-900">{n.title}</p>}
-                  <p className="text-sm text-ink-900">{n.message}</p>
-                  {n.created_at && (
-                    <p className="mt-1 text-xs text-ink-500">{new Date(n.created_at).toLocaleString()}</p>
-                  )}
+                <Card
+                  key={n.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${n.title || "Notification"}${n.read_at ? ", read" : ", unread. Open to mark as read."}`}
+                  className={`cursor-pointer p-4 ${!n.read_at ? "border-brand-300 bg-brand-50/40" : ""}`}
+                  onClick={() => handleNotificationOpen(n)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleNotificationOpen(n);
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      {n.title && <p className="font-medium text-ink-900">{n.title}</p>}
+                      <p className="text-sm text-ink-900">{n.message}</p>
+                      {n.created_at && (
+                        <p className="mt-1 text-xs text-ink-500">{new Date(n.created_at).toLocaleString()}</p>
+                      )}
+                    </div>
+                    {!n.read_at && (
+                      <span className="shrink-0 rounded-full bg-brand-700 px-2 py-1 text-xs font-semibold text-white">
+                        {markingNotificationId === n.id ? "Reading..." : "Unread"}
+                      </span>
+                    )}
+                  </div>
                 </Card>
               ))}
             </div>
@@ -351,21 +438,50 @@ function StaffDashboard() {
       {tab === "tasks" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">My Tasks</h2>
+          {tasksLoadError && (
+            <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load tasks from Supabase: {tasksLoadError}
+            </p>
+          )}
+          {taskProgressError && (
+            <p role="alert" className="mb-4 text-sm text-danger">{taskProgressError}</p>
+          )}
           {tasks.length === 0 ? <EmptyState>No tasks assigned yet.</EmptyState> : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {tasks.map((t) => (
-                <Card key={t.id} className="flex items-center justify-between p-4">
-                  <div>
-                    <p className="font-medium text-ink-900">{t.title}</p>
-                    <p className="text-sm text-ink-500">{t.description}</p>
-                    <p className="mt-1 text-xs text-ink-400">Due {t.due_date}</p>
+                <Card key={t.id} className="p-4">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div className="min-w-0">
+                      <p className="font-medium text-ink-900">{t.title}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink-600">{t.description}</p>
+                      <p className="mt-2 text-xs text-ink-500">Due {t.due_date}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium text-ink-500">Priority</span>
+                      <Badge status={t.priority || "medium"} />
+                      <Badge status={t.progress_status || t.status} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge status={t.status} />
-                    {t.status === "pending" && (
-                      <Button className="px-3 py-1.5 text-xs" onClick={() => completeTask(t.id)}>Mark Done</Button>
-                    )}
-                  </div>
+                  {(t.progress_status || t.status) !== "completed" && (
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-3">
+                      {(t.progress_status || t.status) === "pending" && (
+                        <Button
+                          className="px-3 py-1.5 text-xs"
+                          disabled={updatingTaskId !== null}
+                          onClick={() => handleTaskProgress(t, "in_progress")}
+                        >
+                          {updatingTaskId === t.id ? "Updating..." : "Start task"}
+                        </Button>
+                      )}
+                      <Button
+                        className="px-3 py-1.5 text-xs"
+                        disabled={updatingTaskId !== null}
+                        onClick={() => handleTaskProgress(t, "completed")}
+                      >
+                        {updatingTaskId === t.id ? "Updating..." : "Mark completed"}
+                      </Button>
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>

@@ -27,8 +27,8 @@ export function Field({ label, children }) {
   );
 }
 
-export function Card({ children, className = "" }) {
-  return <div className={`card p-5 ${className}`}>{children}</div>;
+export function Card({ children, className = "", ...props }) {
+  return <div className={`card p-5 ${className}`} {...props}>{children}</div>;
 }
 
 export function Badge({ status }) {
@@ -41,6 +41,10 @@ export function Badge({ status }) {
     pending: "bg-warning/10 text-warning",
     rejected: "bg-danger/10 text-danger",
     inactive: "bg-surface-alt text-ink-500",
+    low: "bg-surface-alt text-ink-600",
+    medium: "bg-brand-100 text-brand-800",
+    high: "bg-danger/10 text-danger",
+    in_progress: "bg-brand-100 text-brand-800",
   };
   const normalizedStatus = String(status || "unknown");
 

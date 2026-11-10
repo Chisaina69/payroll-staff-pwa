@@ -262,7 +262,6 @@ export async function generatePayslip({
     basic_pay: basicPay,
     allowances: allowanceAmount,
     deductions,
-    net_pay: breakdown.net,
     payment_status: "pending",
     created_by: createdBy,
   };
@@ -430,6 +429,77 @@ export function subscribeNotifications(employeeId, onChange) {
   return () => supabase.removeChannel(channel);
 }
 
+export function subscribeAdminPasswordResetRequests(onChange, onError = () => {}) {
+  async function fetchAndNotify() {
+    const { data, error } = await supabase
+      .from("password_reset_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Unable to load password-reset requests:", error.message);
+      onError(error);
+      return;
+    }
+
+    onError(null);
+    onChange(data || []);
+  }
+
+  fetchAndNotify().catch((error) => {
+    console.error("Unexpected password-reset request error:", error);
+    onError(error);
+  });
+
+  const channel = supabase
+    .channel("admin-password-reset-request-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "password_reset_requests" }, () => {
+      fetchAndNotify().catch((error) => {
+        console.error("Unable to refresh password-reset requests:", error);
+        onError(error);
+      });
+    })
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+export async function markPasswordResetRequestRead(requestId) {
+  const readAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("password_reset_requests")
+    .update({ read_at: readAt })
+    .eq("id", requestId)
+    .is("read_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("Unable to mark password-reset request as read:", error.message);
+    throw error;
+  }
+  if (!data) return null;
+
+  return readAt;
+}
+
+export async function markNotificationRead(notificationId, employeeId) {
+  const readAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: readAt })
+    .eq("id", notificationId)
+    .eq("employee_id", employeeId)
+    .is("read_at", null);
+
+  if (error) {
+    console.error("Unable to mark notification as read:", error.message);
+    throw error;
+  }
+
+  await localDb.notifications.update(notificationId, { read_at: readAt });
+  return readAt;
+}
+
 export function sendNotification(employeeId, title, message) {
   return supabase.from("notifications").insert({
     employee_id: employeeId,
@@ -441,41 +511,79 @@ export function sendNotification(employeeId, title, message) {
 
 // ---------- Tasks ----------
 
-export function subscribeTasks(onChange, { employeeId } = {}) {
+export function subscribeTasks(onChange, { employeeId } = {}, onError = () => {}) {
   async function fetchAndNotify() {
-    let query = supabase.from("tasks").select("*").order("due_date", { ascending: true });
-    if (employeeId) query = query.eq("assigned_to", employeeId);
-    const { data, error } = await query;
-    if (!error) {
+    try {
+      let query = supabase.from("tasks").select("*").order("due_date", { ascending: true });
+      if (employeeId) query = query.eq("employee_id", employeeId);
+      const { data, error } = await query;
+      if (error) throw error;
       await localDb.tasks.bulkPut(data);
       onChange(data);
-    } else {
+      onError(null);
+    } catch (error) {
+      console.error("Unable to load tasks from Supabase:", error.message);
+      onError(error);
       const all = await localDb.tasks.toArray();
-      onChange(employeeId ? all.filter((t) => t.assigned_to === employeeId) : all);
+      onChange(employeeId
+        ? all.filter((task) => (task.employee_id || task.assigned_to) === employeeId)
+        : all);
     }
   }
-  fetchAndNotify();
+  fetchAndNotify().catch((error) => {
+    console.error("Unexpected task list error:", error);
+    onError(error);
+  });
   const channel = supabase
     .channel(`tasks-changes-${employeeId || "all"}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchAndNotify)
+    .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, () => {
+      fetchAndNotify().catch((error) => {
+        console.error("Unexpected task refresh error:", error);
+        onError(error);
+      });
+    })
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
 
-export async function assignTask({ title, description, assignedTo, assignedBy, dueDate }) {
-  const { error } = await supabase.from("tasks").insert({
-    title,
-    description,
-    assigned_to: assignedTo,
+export async function assignTask({ title, description, assignedTo, assignedBy, dueDate, priority }) {
+  const cleanTitle = typeof title === "string" ? title.trim() : "";
+  const cleanDescription = typeof description === "string" ? description.trim() : "";
+  const validPriorities = ["low", "medium", "high"];
+  const parsedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+    ? new Date(`${dueDate}T00:00:00Z`)
+    : null;
+
+  if (!cleanTitle || !cleanDescription || !assignedTo || !assignedBy) {
+    throw new Error("Enter a title, description, employee, and assigning administrator.");
+  }
+  if (!parsedDueDate || Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== dueDate) {
+    throw new Error("Choose a valid task due date.");
+  }
+  if (!validPriorities.includes(priority)) {
+    throw new Error("Choose a valid task priority.");
+  }
+
+  const { data, error } = await supabase.from("tasks").insert({
+    title: cleanTitle,
+    description: cleanDescription,
+    employee_id: assignedTo,
     assigned_by: assignedBy,
     due_date: dueDate,
-  });
+    priority,
+  }).select("*").single();
   if (error) throw error;
+  await localDb.tasks.put(data);
+  return data;
 }
 
-export function completeTask(taskId) {
-  return supabase
-    .from("tasks")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
-    .eq("id", taskId);
+export async function updateTaskProgress(taskId, status) {
+  if (!["in_progress", "completed"].includes(status)) {
+    throw new Error("Choose a valid task progress status.");
+  }
+  const { error } = await supabase.rpc("update_task_progress", {
+    p_task_id: taskId,
+    p_status: status,
+  });
+  if (error) throw error;
 }

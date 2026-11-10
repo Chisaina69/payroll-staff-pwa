@@ -119,11 +119,49 @@ Deno.serve(async (req: Request) => {
     }
 
     if (existingProfile) {
-      return respond(
-        headers,
-        { error: "Employee account already exists" },
-        409,
-      );
+      const { data: claimedInvite, error: claimError } = await adminClient
+        .from("staff_invite_codes")
+        .update({ used_at: new Date().toISOString() })
+        .eq("id", invitation.id)
+        .is("used_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .select("id")
+        .maybeSingle();
+
+      if (claimError || !claimedInvite) {
+        console.error("Failed to consume password-reset invite:", claimError);
+        return respond(
+          headers,
+          { error: "This password-reset invite is invalid or has already been used." },
+          400,
+        );
+      }
+
+      const { error: passwordError } = await adminClient.auth.admin
+        .updateUserById(existingProfile.id, { password });
+
+      if (passwordError) {
+        console.error("Password reset failed after invite consumption:", passwordError);
+        return respond(
+          headers,
+          { error: "Unable to reset the password. Ask your administrator for a new invite." },
+          500,
+        );
+      }
+
+      const { error: auditError } = await adminClient.from("audit_logs").insert({
+        actor_id: null,
+        action: "staff_password_reset",
+        entity_type: "employee",
+        entity_id: employee.id,
+      });
+      if (auditError) {
+        console.error("Password reset audit log failed:", auditError);
+      }
+
+      return respond(headers, {
+        message: "Password reset successfully. You can now sign in with your new password.",
+      });
     }
 
     const { data: created, error: createError } = await adminClient.auth.admin

@@ -53,3 +53,31 @@ localDb.version(7).stores({
 localDb.version(8).stores({
   notifications: "id, employee_id, read_at, created_at",
 });
+
+localDb.version(9).stores({
+  employees: "id, employee_code, first_name, last_name, department, status",
+  payroll: "id, employee_id, pay_period_start, payment_status",
+  leaveRequests: "id, employee_id, status, created_at",
+  notifications: "id, employee_id, read_at, created_at",
+  tasks: "id, employee_id, status, due_date",
+  pendingWrites: "++localId, kind, createdAt",
+}).upgrade(async (transaction) => {
+  const tasks = await transaction.table("tasks").toArray();
+  await transaction.table("tasks").bulkPut(tasks.map((task) => ({
+    ...task,
+    employee_id: task.employee_id || task.assigned_to,
+  })));
+});
+
+localDb.version(10).stores({
+  employees: "id, employee_code, first_name, last_name, department, status",
+  payroll: "id, employee_id, pay_period_start, payment_status",
+  leaveRequests: "id, employee_id, status, created_at",
+  notifications: "id, employee_id, read_at, created_at",
+  tasks: "id, employee_id, status, due_date",
+  pendingWrites: "++localId, kind, createdAt",
+}).upgrade(async (transaction) => {
+  await transaction.table("notifications")
+    .filter((notification) => notification.title === "Password reset requested")
+    .delete();
+});

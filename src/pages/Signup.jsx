@@ -1,15 +1,35 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { Button, Field, inputClass } from "../components/ui";
 import { activateStaffAccount } from "../lib/paydayAuth";
 
-export default function Signup() {
+function Signup() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [employeeId, setEmployeeId] = useState("");
-  const [registrationCode, setRegistrationCode] = useState("");
+  const [inviteDetails] = useState(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const employeeCode = hash.get("employee_code") || "";
+    const registrationCode = hash.get("registration_code") || "";
+    if (employeeCode || registrationCode) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+    return {
+      employeeCode,
+      registrationCode,
+    };
+  });
+  const [employeeId, setEmployeeId] = useState(inviteDetails.employeeCode);
+  const [registrationCode, setRegistrationCode] = useState(inviteDetails.registrationCode);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const isPasswordReset = new URLSearchParams(location.search).get("mode") === "reset";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -17,7 +37,12 @@ export default function Signup() {
     setBusy(true);
     try {
       await activateStaffAccount(employeeId, registrationCode, password);
-      navigate("/login", { state: { accountActivated: true } });
+      navigate("/login", {
+        state: {
+          accountActivated: !isPasswordReset,
+          passwordReset: isPasswordReset,
+        },
+      });
     } catch (err) {
       setError(err.message || "Couldn't create your account. Please try again.");
     } finally {
@@ -40,7 +65,9 @@ export default function Signup() {
         <div className="mb-7 text-center">
           <span className="font-display text-3xl font-semibold text-brand-800">Payday</span>
           <p className="mt-1.5 text-sm text-ink-500">
-            Ask your administrator for an Employee ID and one-time registration code.
+            {isPasswordReset
+              ? "Use the secure reset invite from your administrator to choose a new password."
+              : "Ask your administrator for an Employee ID and one-time registration code."}
           </p>
         </div>
 
@@ -62,22 +89,40 @@ export default function Signup() {
               required
             />
           </Field>
-          <Field label="Password">
-            <input
-              type="password"
-              className={inputClass}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={12}
-              required
-            />
+          <Field label={isPasswordReset ? "New password" : "Password"}>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                className={`${inputClass} pr-12`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 inline-flex items-center px-3 text-ink-500 hover:text-ink-900"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </Field>
         </div>
 
+        <p className="mt-3 text-xs text-ink-500">
+          Use at least 12 characters. Your password is never shown to the administrator.
+        </p>
         {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
         <Button type="submit" disabled={busy} className="mt-6 w-full">
-          {busy ? "Activating account..." : "Activate Account"}
+          {busy
+            ? isPasswordReset ? "Resetting password..." : "Activating account..."
+            : isPasswordReset ? "Set New Password" : "Activate Account"}
         </Button>
 
         <p className="mt-5 text-center text-sm text-ink-500">
@@ -90,3 +135,5 @@ export default function Signup() {
     </div>
   );
 }
+
+export default Signup;
