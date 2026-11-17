@@ -61,7 +61,7 @@ function openPayslipReceipt(record, employee) {
   const deductions = details.deductions.map(({ label, amount }) => `
     <tr><td>${escapeHtml(label)}</td><td class="amount">${escapeHtml(formatCurrency(amount))}</td></tr>
   `).join("");
-  const title = `Payslip ${record.pay_period_start || ""}`;
+  const title = `PayDay Slip ${record.pay_period_start || ""}`;
 
   receiptWindow.document.open();
   receiptWindow.document.write(`<!doctype html>

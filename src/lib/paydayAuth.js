@@ -124,9 +124,5 @@ async function logout() {
 }
 
 export {
-  activateStaffAccount,
-  createStaffInvite,
-  loginWithEmployeeId,
-  logout,
-  requestStaffPasswordReset,
+  activateStaffAccount,createStaffInvite,loginWithEmployeeId, logout,requestStaffPasswordReset,
 };

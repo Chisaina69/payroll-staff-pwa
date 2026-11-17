@@ -1,11 +1,4 @@
 // Kenyan statutory payroll deductions (2026 rates).
-//
-// These constants are kept separate and clearly labelled — not buried as
-// magic numbers in the calculation logic — because Kenyan tax bands are
-// revised periodically (there is active Finance Bill debate on these exact
-// figures as of 2026). Anyone picking up this file later should be able to
-// update just this block against KRA's current published rates.
-
 const RATES = {
   NSSF_RATE: 0.06,            // 6% of pensionable pay
   NSSF_UPPER_LIMIT: 108000,   // contributions capped at this monthly pay
@@ -35,8 +28,6 @@ function calculateAhl(gross) {
 }
 
 // PAYE is charged on what's left after NSSF, SHIF and AHL are deducted
-// (these three are "allowable deductions" that reduce taxable pay), using
-// Kenya's progressive band system, then reduced by the flat personal relief.
 function calculatePaye(taxablePay) {
   let remaining = taxablePay;
   let previousCeiling = 0;

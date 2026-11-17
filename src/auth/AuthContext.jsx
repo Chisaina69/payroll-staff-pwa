@@ -26,7 +26,7 @@ function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Check for an existing session on first load (e.g. page refresh)
+    // Check for an existing session on first load 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) setProfile(await loadProfile(session.user.id));
