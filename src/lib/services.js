@@ -102,6 +102,29 @@ async function addEmployee(employeeId, data) {
   return employee;
 }
 
+async function setEmployeeStatus(employeeId, status) {
+  if (!["active", "inactive"].includes(status)) {
+    throw new Error("Choose an active or inactive employee status.");
+  }
+
+  const { data, error } = await supabase
+    .from("employees")
+    .update({ status })
+    .eq("id", employeeId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to update employee status:", error.message);
+    throw error;
+  }
+  if (!data) {
+    throw new Error("Employee status was not changed. Refresh the list and try again.");
+  }
+
+  return data;
+}
+
 function updateEmployee(employeeId, data) {
   return supabase.from("employees").update(data).eq("id", employeeId);
 }
@@ -597,5 +620,17 @@ export {
   flushPendingWrites,
   generatePayslip,
   markNotificationRead,
-  markPasswordResetRequestRead, sendNotification,setLeaveRequestStatus, submitLeaveRequest,subscribeAdminPasswordResetRequests,subscribeEmployees,subscribeLeaveRequests, subscribeNotifications,subscribePayroll,subscribeTasks,updateEmployee,updateTaskProgress,
+  markPasswordResetRequestRead,
+  sendNotification,
+  setEmployeeStatus,
+  setLeaveRequestStatus,
+  submitLeaveRequest,
+  subscribeAdminPasswordResetRequests,
+  subscribeEmployees,
+  subscribeLeaveRequests,
+  subscribeNotifications,
+  subscribePayroll,
+  subscribeTasks,
+  updateEmployee,
+  updateTaskProgress,
 };

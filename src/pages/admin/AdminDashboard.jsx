@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { Users, Wallet, CalendarClock, ListChecks, Plus, Bell } from "lucide-react";
+import {
+  Users,
+  Wallet,
+  CalendarClock,
+  ListChecks,
+  Plus,
+  Bell,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 import { useAuth } from "../../auth/useAuth";
 import {
   subscribeEmployees,
@@ -12,6 +21,7 @@ import {
   sendNotification,
   markPasswordResetRequestRead,
   confirmPayrollPayment,
+  setEmployeeStatus,
 } from "../../lib/services";
 import DashboardShell from "../../components/DashboardShell";
 import { Badge, Button, Card, EmptyState, StatCard } from "../../components/ui";
@@ -25,6 +35,8 @@ function AdminDashboard() {
   const { logout, profile, user } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [employeeLoadError, setEmployeeLoadError] = useState("");
+  const [employeeStatusError, setEmployeeStatusError] = useState("");
+  const [updatingEmployeeId, setUpdatingEmployeeId] = useState(null);
   const [inviteStatuses, setInviteStatuses] = useState({});
   const [inviteStatusesKey, setInviteStatusesKey] = useState("");
   const [inviteStatusError, setInviteStatusError] = useState("");
@@ -128,6 +140,30 @@ function AdminDashboard() {
     });
     setEmployeeLoadError("");
     setShowAddEmployee(false);
+  }
+
+  async function handleEmployeeStatusChange(employee) {
+    const nextStatus = employee.status === "active" ? "inactive" : "active";
+    const action = nextStatus === "inactive" ? "deactivate" : "reactivate";
+    const employeeFullName = `${employee.first_name} ${employee.last_name}`.trim();
+    const confirmation = nextStatus === "inactive"
+      ? `Deactivate ${employeeFullName}? This blocks future employee-ID sign-ins and new assignments while preserving their records.`
+      : `Reactivate ${employeeFullName}? This allows future employee-ID sign-ins and assignments again.`;
+    if (!window.confirm(confirmation)) return;
+
+    setUpdatingEmployeeId(employee.id);
+    setEmployeeStatusError("");
+    try {
+      const updatedEmployee = await setEmployeeStatus(employee.id, nextStatus);
+      setEmployees((current) => current.map((item) =>
+        item.id === updatedEmployee.id ? updatedEmployee : item
+      ));
+    } catch (error) {
+      console.error(`Unable to ${action} employee:`, error);
+      setEmployeeStatusError(error.message || `Unable to ${action} this employee.`);
+    } finally {
+      setUpdatingEmployeeId(null);
+    }
   }
 
   function handlePayrollCreated(record) {
@@ -247,6 +283,15 @@ function AdminDashboard() {
   }
 
   function renderEmployeeAccountAction(employee) {
+    if (employee.status !== "active") {
+      return (
+        <div className="flex items-center gap-2">
+          <Badge status="inactive" />
+          <span className="text-xs text-ink-500">Sign-in disabled</span>
+        </div>
+      );
+    }
+
     if (inviteStatuses[employee.id] === "active") {
       return (
         <div className="flex flex-wrap items-center gap-2">
@@ -307,6 +352,7 @@ function AdminDashboard() {
   const unreadPasswordResetRequests = passwordResetRequests.filter((request) =>
     !request.read_at
   ).length;
+  const activeEmployees = employees.filter((employee) => employee.status === "active");
 
   const navItems = [
     { key: "employees", label: "Employees", icon: Users, count: employees.length },
@@ -348,6 +394,11 @@ function AdminDashboard() {
           {employeeLoadError && (
             <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               Could not refresh the employee list from Supabase: {employeeLoadError}
+            </p>
+          )}
+          {employeeStatusError && (
+            <p role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {employeeStatusError}
             </p>
           )}
           {invite && (
@@ -401,6 +452,17 @@ function AdminDashboard() {
                   <div className="mt-3 border-t border-line pt-3">
                     <p className="mb-2 text-xs font-medium text-ink-500">Account</p>
                     {renderEmployeeAccountAction(employee)}
+                    <Button
+                      variant={employee.status === "active" ? "danger" : "secondary"}
+                      className="mt-3 px-3 py-1.5 text-xs"
+                      disabled={updatingEmployeeId !== null}
+                      onClick={() => handleEmployeeStatusChange(employee)}
+                    >
+                      {employee.status === "active" ? <UserX size={14} /> : <UserCheck size={14} />}
+                      {updatingEmployeeId === employee.id
+                        ? "Saving..."
+                        : employee.status === "active" ? "Deactivate" : "Reactivate"}
+                    </Button>
                   </div>
                 </Card>
               ))}
@@ -410,7 +472,7 @@ function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
                     <th className="px-4 py-3">ID</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Department</th>
-                    <th className="px-4 py-3">Position</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Account</th>
+                    <th className="px-4 py-3">Position</th><th className="px-4 py-3">Salary</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Account</th><th className="px-4 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,6 +485,19 @@ function AdminDashboard() {
                       <td className="px-4 py-3 text-ink-600">KES {Number(e.basic_salary).toLocaleString()}</td>
                       <td className="px-4 py-3"><Badge status={e.status} /></td>
                       <td className="px-4 py-3">{renderEmployeeAccountAction(e)}</td>
+                      <td className="px-4 py-3">
+                        <Button
+                          variant={e.status === "active" ? "danger" : "secondary"}
+                          className="px-3 py-1.5 text-xs"
+                          disabled={updatingEmployeeId !== null}
+                          onClick={() => handleEmployeeStatusChange(e)}
+                        >
+                          {e.status === "active" ? <UserX size={14} /> : <UserCheck size={14} />}
+                          {updatingEmployeeId === e.id
+                            ? "Saving..."
+                            : e.status === "active" ? "Deactivate" : "Reactivate"}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -437,12 +512,12 @@ function AdminDashboard() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-xl font-semibold text-ink-900">Payroll</h2>
-            {!showGeneratePayslip && employees.length > 0 && (
+            {!showGeneratePayslip && activeEmployees.length > 0 && (
               <Button onClick={() => setShowGeneratePayslip(true)}><Plus size={15} /> Generate Payslip</Button>
             )}
           </div>
-          {employees.length === 0 && <EmptyState>Add an employee first before generating a payslip.</EmptyState>}
-          {showGeneratePayslip && <GeneratePayslipForm employees={employees} onDone={handlePayrollCreated} />}
+          {activeEmployees.length === 0 && <EmptyState>Add or reactivate an employee before generating a payslip.</EmptyState>}
+          {showGeneratePayslip && <GeneratePayslipForm employees={activeEmployees} onDone={handlePayrollCreated} />}
           {payrollLoadError && (
             <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               Could not load payroll records from Supabase: {payrollLoadError}
@@ -622,18 +697,18 @@ function AdminDashboard() {
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-xl font-semibold text-ink-900">Tasks</h2>
-            {!showAssignTask && employees.length > 0 && (
+            {!showAssignTask && activeEmployees.length > 0 && (
               <Button onClick={() => setShowAssignTask(true)}><Plus size={15} /> Assign Task</Button>
             )}
           </div>
           {showAssignTask && (
             <AssignTaskForm
-              employees={employees}
+              employees={activeEmployees}
               onDone={handleTaskAssigned}
               onCancel={() => setShowAssignTask(false)}
             />
           )}
-          {employees.length === 0 && <EmptyState>Add an employee before assigning a task.</EmptyState>}
+          {activeEmployees.length === 0 && <EmptyState>Add or reactivate an employee before assigning a task.</EmptyState>}
           {tasksLoadError && (
             <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               Could not load tasks from Supabase: {tasksLoadError}
