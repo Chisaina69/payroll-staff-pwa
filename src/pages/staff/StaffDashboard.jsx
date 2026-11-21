@@ -37,6 +37,8 @@ function StaffDashboard() {
   const [taskProgressError, setTaskProgressError] = useState("");
   const [updatingTaskId, setUpdatingTaskId] = useState(null);
   const [directory, setDirectory] = useState([]);
+  const [directoryLoading, setDirectoryLoading] = useState(true);
+  const [directoryLoadError, setDirectoryLoadError] = useState("");
   const [myRecord, setMyRecord] = useState(null);
   const [tab, setTab] = useState("payslips");
 
@@ -70,9 +72,13 @@ function StaffDashboard() {
         }
         setMyRecord(data);
       });
-    fetchDirectory().then(setDirectory).catch((error) => {
-      console.error("Unable to load employee directory:", error.message);
-    });
+    fetchDirectory()
+      .then(setDirectory)
+      .catch((error) => {
+        console.error("Unable to load employee directory:", error.message);
+        setDirectoryLoadError(error.message || "Unable to load the employee directory.");
+      })
+      .finally(() => setDirectoryLoading(false));
     return () => unsubs.forEach((u) => u());
   }, [employeeId]);
 
@@ -585,34 +591,46 @@ function StaffDashboard() {
       {tab === "directory" && (
         <section>
           <h2 className="font-display mb-4 text-xl font-semibold text-ink-900">Employee Directory</h2>
-          <div className="space-y-3 lg:hidden">
-            {directory.map((person) => (
-              <Card key={person.id || person.employee_code || person.employee_id} className="p-4">
-                <p className="font-semibold text-ink-900">{person.first_name ? `${person.first_name} ${person.last_name || ""}`.trim() : person.name}</p>
-                <p className="mt-1 text-sm text-ink-600">{person.position || "—"}</p>
-                <p className="mt-2 text-xs text-ink-500">{person.department || "—"}</p>
-              </Card>
-            ))}
-            {directory.length === 0 && <EmptyState>No directory entries yet.</EmptyState>}
-          </div>
-          <Card className="hidden overflow-x-auto p-0 lg:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
-                  <th className="px-4 py-3">Name</th><th className="px-4 py-3">Department</th><th className="px-4 py-3">Position</th>
-                </tr>
-              </thead>
-              <tbody>
-                {directory.map((d) => (
-                  <tr key={d.id || d.employee_code || d.employee_id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3 font-medium text-ink-900">{d.first_name ? `${d.first_name} ${d.last_name || ""}`.trim() : d.name}</td>
-                    <td className="px-4 py-3 text-ink-600">{d.department}</td>
-                    <td className="px-4 py-3 text-ink-600">{d.position}</td>
-                  </tr>
+          {directoryLoading && <p role="status" className="text-sm text-ink-500">Loading directory…</p>}
+          {directoryLoadError && (
+            <p role="alert" className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              Could not load the employee directory: {directoryLoadError}
+            </p>
+          )}
+          {!directoryLoading && !directoryLoadError && directory.length === 0 && (
+            <EmptyState>No active employees found.</EmptyState>
+          )}
+          {!directoryLoading && !directoryLoadError && directory.length > 0 && (
+            <>
+              <div className="space-y-3 lg:hidden">
+                {directory.map((person) => (
+                  <Card key={person.id} className="p-4">
+                    <p className="font-semibold text-ink-900">{`${person.first_name} ${person.last_name || ""}`.trim()}</p>
+                    <p className="mt-1 text-sm text-ink-600">{person.position || "—"}</p>
+                    <p className="mt-2 text-xs text-ink-500">{person.department || "—"}</p>
+                  </Card>
                 ))}
-              </tbody>
-            </table>
-          </Card>
+              </div>
+              <Card className="hidden overflow-x-auto p-0 lg:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-line bg-surface-alt text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
+                      <th className="px-4 py-3">Name</th><th className="px-4 py-3">Department</th><th className="px-4 py-3">Position</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {directory.map((person) => (
+                      <tr key={person.id} className="border-b border-line last:border-0">
+                        <td className="px-4 py-3 font-medium text-ink-900">{`${person.first_name} ${person.last_name || ""}`.trim()}</td>
+                        <td className="px-4 py-3 text-ink-600">{person.department}</td>
+                        <td className="px-4 py-3 text-ink-600">{person.position}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            </>
+          )}
         </section>
       )}
     </DashboardShell>

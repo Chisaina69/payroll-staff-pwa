@@ -78,7 +78,7 @@ The browser's route guard is a user-experience layer, not a replacement for data
 ### Staff profile and employee directory
 
 - **Profile:** The Profile tab shows the signed-in employee's name, department, position, and work email from the employee record.
-- **Directory:** The Directory tab calls `fetchDirectory` in [src/lib/services.js](src/lib/services.js), which reads the `employee_directory` database view. The UI displays name, department, and position rather than salary. The view must be created and secured in the Supabase project; its definition is not included in this repository.
+- **Directory:** The Directory tab calls `fetchDirectory` in [src/lib/services.js](src/lib/services.js), which reads the `employee_directory` database view. The view exposes only the names, departments, and positions of active employees to signed-in users; salary and contact details are not included.
 
 ### Realtime updates, local cache, and responsive layout
 
@@ -104,11 +104,11 @@ The browser's route guard is a user-experience layer, not a replacement for data
 ## Supabase setup and deployment
 
 1. Create a Supabase project and enable email/password authentication.
-2. Create the tables and the `employee_directory` view queried by the app: `profiles`, `employees`, `payroll_records`, `leave_requests`, `notifications`, and `tasks`. Employee records use fields such as `id`, `employee_code`, `first_name`, `last_name`, `email`, `department`, `position`, `basic_salary`, and `status`. Staff profiles connect an auth user to an employee through `profiles.employee_id`.
-3. Create and test RLS policies for the intended admin/staff access before using real employee or payroll data. The public anon key does not replace database policies. The policies, base schema, `employee_directory` view, and some database helper objects are not fully defined by this repository.
+2. Create the tables queried by the app: `profiles`, `employees`, `payroll_records`, `leave_requests`, `notifications`, and `tasks`. Employee records use fields such as `id`, `employee_code`, `first_name`, `last_name`, `email`, `department`, `position`, `basic_salary`, and `status`. Staff profiles connect an auth user to an employee through `profiles.employee_id`.
+3. Create and test RLS policies for the intended admin/staff access before using real employee or payroll data. The public anon key does not replace database policies. The base schema, policies, and some database helper objects are not fully defined by this repository.
 4. Create the first admin user in Supabase Auth and insert a matching `profiles` row with the same user UUID as `id` and `role` set to `admin`. Admins sign in with email; staff sign in with their employee ID.
 5. Add the required staff-invite objects used by the Edge Functions: `staff_invite_codes`, `audit_logs`, and the `consume_staff_invite`, `check_login_rate_limit`, and `reset_login_rate_limit` database functions.
-6. Apply the SQL migrations in [supabase/migrations](supabase/migrations) in timestamp order. They add task priority and progress checks, password-reset request storage and admin policies, notifications for new payslips and task assignments, and Realtime publication configuration. These migrations assume the referenced base tables, enums, schemas, and helper functions already exist.
+6. Apply the SQL migrations in [supabase/migrations](supabase/migrations) in timestamp order. They add the limited employee directory view, task priority and progress checks, password-reset request storage and admin policies, notifications for new payslips and task assignments, and Realtime publication configuration. These migrations assume the referenced base tables, enums, schemas, and helper functions already exist.
 7. Deploy the three Edge Functions in [supabase/functions](supabase/functions). Configure their server-side Supabase secrets and allowed origins. The functions allow local development origins and `https://payroll-staff-pwa.onrender.com`; add other exact origins with the optional comma-separated `PAYDAY_ALLOWED_ORIGINS` secret. Wildcards are not supported.
 
 ## Suggested presentation walkthrough

@@ -135,10 +135,10 @@ function updateEmployee(employeeId, data) {
 async function fetchDirectory() {
   const { data, error } = await supabase
     .from("employee_directory")
-    .select("*")
+    .select("id, first_name, last_name, department, position")
     .order("first_name");
   if (error) throw error;
-  return data;
+  return data || [];
 }
 
 async function fetchEmployeeInviteStatuses(employeeIds) {
