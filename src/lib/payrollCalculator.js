@@ -2,9 +2,9 @@
 const RATES = {
   NSSF_RATE: 0.06,            // 6% of pensionable pay
   NSSF_UPPER_LIMIT: 108000,   // contributions capped at this monthly pay
-  SHIF_RATE: 0.0275,          // 2.75% of gross pay (replaced NHIF in 2024)
+  SHIF_RATE: 0.0275,          // 2.75% of gross pay 
   AHL_RATE: 0.015,            // Affordable Housing Levy, 1.5% of gross pay
-  PERSONAL_RELIEF: 2400,      // flat monthly relief subtracted from PAYE
+  PERSONAL_RELIEF: 2400,      
   PAYE_BANDS: [
     { upTo: 24000, rate: 0.10 },
     { upTo: 32333, rate: 0.25 },
